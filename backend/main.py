@@ -632,10 +632,11 @@ def geocode(q: str):
                 "addressdetails": 1,
                 "countrycodes": "in",
             },
-            headers={
-                "User-Agent": "NER-Smart-Logistics/1.0"
-            },
-            timeout=10,
+headers={
+    "User-Agent": "NER-Smart-Logistics/1.0 (contact: your-skcreator470@gmail.com)",
+    "Accept-Language": "en"
+},
+timeout=15,
         )
 
         response.raise_for_status()
