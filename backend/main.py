@@ -552,8 +552,8 @@ def login(data: LoginRequest):
         COOKIE_NAME,
         token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         max_age=7 * 24 * 60 * 60,
     )
 
