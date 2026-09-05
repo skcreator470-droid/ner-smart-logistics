@@ -22,7 +22,7 @@ import DriverTracker from "./DriverTracker";
 
 
 const API_URL =
-  "http://127.0.0.1:8000";
+  "https://ner-smart-logistics-3hbr.onrender.com";
 
 
 delete L.Icon.Default.prototype._getIconUrl;

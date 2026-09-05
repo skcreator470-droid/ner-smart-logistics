@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://ner-smart-logistics-3hbr.onrender.com";
 
 export default function DriverTracker({
   vehicleId = 1,
