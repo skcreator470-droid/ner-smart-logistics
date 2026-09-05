@@ -10,3 +10,10 @@ __pycache__/
 *.sqlite3
 .venv/
 venv/
+
+backend/.env
+backend/ner_logistics.db
+node_modules
+dist
+__pycache__
+*.pyc
