@@ -22,7 +22,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from backend.hazards import (
+from hazards import (
     SACHET_URL,
     sachet_feed,
     score_route_hazards,
@@ -30,7 +30,7 @@ from backend.hazards import (
 
 # IMPORTANT:
 # Satellite NDVI function ab satellite.py se aayega.
-from backend.satellite import get_satellite_ndvi
+from satellite import get_satellite_ndvi
 
 load_dotenv()
 
@@ -1985,4 +1985,5 @@ def ner_news():
 
 from backend.live_alerts import router as live_alert_router
 app.include_router(live_alert_router)
+
 
