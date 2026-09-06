@@ -409,12 +409,20 @@ function App() {
         await apiFetch(
           "/api/live-alerts"
         );
+      const liveNews = Array.isArray(data.alerts)
+        ? data.alerts.map((alert) => ({
+            title: alert.title || alert.event || "NDMA SACHET Alert",
+            description: alert.description || "",
+            category: alert.event || "Disaster Alert",
+            published_at: alert.effective || "",
+            link: "",
+            source: alert.source || "NDMA SACHET",
+            severity: alert.severity || "LOW",
+            state: alert.state || alert.area || ""
+          }))
+        : [];
 
-      setNerNews(
-        Array.isArray(data.news)
-          ? data.news
-          : []
-      );
+      setNerNews(liveNews);
     } catch (error) {
       console.error(
         "NER news fetch failed:",
@@ -2518,4 +2526,6 @@ function App() {
 }
 
 export default App;
+
+
 
