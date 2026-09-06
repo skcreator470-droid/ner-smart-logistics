@@ -1,6 +1,8 @@
-fastapi
+﻿fastapi
 uvicorn
 requests
 python-dotenv
 numpy
 Pillow
+httpx
+feedparser
