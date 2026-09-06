@@ -17,6 +17,10 @@ TOKEN_URL = (
 STATS_URL = "https://sh.dataspace.copernicus.eu/statistics/v1"
 
 
+# ============================================================
+# COPERNICUS ACCESS TOKEN
+# ============================================================
+
 def get_access_token():
     if not CLIENT_ID or not CLIENT_SECRET:
         raise RuntimeError(
@@ -42,11 +46,29 @@ def get_access_token():
     return response.json()["access_token"]
 
 
+# ============================================================
+# SENTINEL-2 NDVI
+# ============================================================
+
 def get_satellite_ndvi(latitude, longitude):
     token = get_access_token()
 
-    # Small area around route midpoint
-    delta = 0.02
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Keep the requested area small enough for Copernicus
+    # Statistics API.
+    #
+    # Previous value:
+    # delta = 0.02
+    #
+    # That created a large bounding box and resulted in:
+    # 6673.58 meters per pixel > 1500 meters per pixel.
+    #
+    # Smaller area keeps the request within the supported
+    # Sentinel-2 statistics resolution.
+    # --------------------------------------------------------
+
+    delta = 0.004
 
     bbox = [
         longitude - delta,
@@ -56,9 +78,14 @@ def get_satellite_ndvi(latitude, longitude):
     ]
 
     end_date = datetime.now(timezone.utc)
+
+    # One year of Sentinel-2 observations
     start_date = end_date - timedelta(days=365)
 
-    # Sentinel-2 NDVI evalscript
+    # ========================================================
+    # SENTINEL-2 NDVI EVALSCRIPT
+    # ========================================================
+
     evalscript = """
     //VERSION=3
 
@@ -88,7 +115,8 @@ def get_satellite_ndvi(latitude, longitude):
 
     function evaluatePixel(samples) {
 
-      let denominator = samples.B08 + samples.B04;
+      let denominator =
+        samples.B08 + samples.B04;
 
       if (denominator == 0) {
         return {
@@ -98,10 +126,13 @@ def get_satellite_ndvi(latitude, longitude):
       }
 
       let ndvi =
-        (samples.B08 - samples.B04) / denominator;
+        (samples.B08 - samples.B04)
+        / denominator;
 
-      // Remove water pixels
-      let waterMask = samples.SCL == 6 ? 0 : 1;
+      // Remove water pixels.
+      // Sentinel-2 SCL class 6 = water.
+      let waterMask =
+        samples.SCL == 6 ? 0 : 1;
 
       return {
         data: [ndvi],
@@ -111,6 +142,10 @@ def get_satellite_ndvi(latitude, longitude):
       };
     }
     """
+
+    # ========================================================
+    # COPERNICUS STATISTICS REQUEST
+    # ========================================================
 
     request_body = {
         "input": {
@@ -133,19 +168,30 @@ def get_satellite_ndvi(latitude, longitude):
                 }
             ],
         },
+
         "aggregation": {
             "timeRange": {
                 "from": start_date.isoformat(),
                 "to": end_date.isoformat(),
             },
+
             "aggregationInterval": {
                 "of": "P60D"
             },
+
             "evalscript": evalscript,
-            "resx": 0.0002,
-            "resy": 0.0002,
+
+            # Sentinel-2 compatible geographic resolution.
+            # These values are intentionally moderate so the
+            # statistics request stays inside API limits.
+            "resx": 0.0001,
+            "resy": 0.0001,
         },
     }
+
+    # ========================================================
+    # CALL COPERNICUS
+    # ========================================================
 
     response = requests.post(
         STATS_URL,
@@ -158,18 +204,50 @@ def get_satellite_ndvi(latitude, longitude):
         timeout=90,
     )
 
+    # --------------------------------------------------------
+    # HANDLE COPERNICUS HTTP ERRORS
+    # --------------------------------------------------------
+
     if not response.ok:
         print("COPERNICUS STATISTICS ERROR:")
         print(response.text)
 
-    response.raise_for_status()
+        # Give a clean application-level response instead of
+        # crashing the complete dashboard.
+        return {
+            "available": False,
+            "mean_ndvi": None,
+            "minimum_ndvi": None,
+            "maximum_ndvi": None,
+            "source": "Copernicus Sentinel-2 L2A",
+            "message": (
+                "Copernicus Sentinel-2 statistics are "
+                "temporarily unavailable for this location."
+            ),
+            "error": response.text,
+        }
+
+    # ========================================================
+    # PARSE RESPONSE
+    # ========================================================
 
     result = response.json()
 
     if result.get("status") != "OK":
-        raise RuntimeError(
-            f"Satellite statistics failed: {result}"
-        )
+        print("COPERNICUS SATELLITE STATISTICS FAILED:")
+        print(result)
+
+        return {
+            "available": False,
+            "mean_ndvi": None,
+            "minimum_ndvi": None,
+            "maximum_ndvi": None,
+            "source": "Copernicus Sentinel-2 L2A",
+            "message": (
+                "No valid Sentinel-2 statistics were returned "
+                "for this area and time period."
+            ),
+        }
 
     data = result.get("data", [])
 
@@ -186,6 +264,10 @@ def get_satellite_ndvi(latitude, longitude):
             ),
         }
 
+    # ========================================================
+    # EXTRACT OUTPUT
+    # ========================================================
+
     outputs = data[0].get("outputs", {})
 
     ndvi_output = outputs.get("data")
@@ -197,18 +279,39 @@ def get_satellite_ndvi(latitude, longitude):
             "minimum_ndvi": None,
             "maximum_ndvi": None,
             "source": "Copernicus Sentinel-2 L2A",
-            "message": "NDVI output was not returned.",
+            "message": (
+                "NDVI output was not returned by Copernicus."
+            ),
         }
 
     bands = ndvi_output.get("bands", {})
 
-    first_band = next(iter(bands.values()), {})
+    if not bands:
+        return {
+            "available": False,
+            "mean_ndvi": None,
+            "minimum_ndvi": None,
+            "maximum_ndvi": None,
+            "source": "Copernicus Sentinel-2 L2A",
+            "message": (
+                "No NDVI bands were returned by Copernicus."
+            ),
+        }
+
+    first_band = next(
+        iter(bands.values()),
+        {}
+    )
 
     stats = first_band.get("stats", {})
 
     mean = stats.get("mean")
     minimum = stats.get("min")
     maximum = stats.get("max")
+
+    # ========================================================
+    # NO MEAN NDVI
+    # ========================================================
 
     if mean is None:
         return {
@@ -217,29 +320,64 @@ def get_satellite_ndvi(latitude, longitude):
             "minimum_ndvi": None,
             "maximum_ndvi": None,
             "source": "Copernicus Sentinel-2 L2A",
-            "message": "Mean NDVI was not available.",
+            "message": (
+                "Mean NDVI was not available for "
+                "the selected observation."
+            ),
         }
+
+    # ========================================================
+    # REAL NDVI RESULT
+    # ========================================================
 
     return {
         "available": True,
-        "mean_ndvi": round(float(mean), 3),
+
+        "mean_ndvi": round(
+            float(mean),
+            3
+        ),
+
         "min_ndvi": (
-            round(float(minimum), 3)
+            round(
+                float(minimum),
+                3
+            )
             if minimum is not None
             else None
         ),
+
         "max_ndvi": (
-            round(float(maximum), 3)
+            round(
+                float(maximum),
+                3
+            )
             if maximum is not None
             else None
         ),
+
         "source": "Copernicus Sentinel-2 L2A",
+
         "message": (
             "Real Sentinel-2 NDVI analysis completed."
         ),
+
         "analysis_period": {
             "from": start_date.isoformat(),
             "to": end_date.isoformat(),
         },
+
         "cloud_filter_percent": 50,
+
+        "coordinates": {
+            "latitude": float(latitude),
+            "longitude": float(longitude),
+        },
+
+        "bounding_box": bbox,
+
+        "resolution": {
+            "resx": 0.0001,
+            "resy": 0.0001,
+        },
     }

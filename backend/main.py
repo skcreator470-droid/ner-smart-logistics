@@ -22,13 +22,15 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-
 from hazards import (
     SACHET_URL,
     sachet_feed,
     score_route_hazards,
 )
 
+# IMPORTANT:
+# Satellite NDVI function ab satellite.py se aayega.
+from satellite import get_satellite_ndvi
 
 load_dotenv()
 
@@ -48,24 +50,6 @@ OPEN_METEO_URL = (
     "https://api.open-meteo.com/v1/forecast"
 )
 
-COPERNICUS_TOKEN_URL = (
-    "https://identity.dataspace.copernicus.eu/"
-    "auth/realms/CDSE/protocol/openid-connect/token"
-)
-
-COPERNICUS_STATS_URL = (
-    "https://sh.dataspace.copernicus.eu/"
-    "statistics/v1"
-)
-
-COPERNICUS_CLIENT_ID = os.getenv(
-    "COPERNICUS_CLIENT_ID"
-)
-
-COPERNICUS_CLIENT_SECRET = os.getenv(
-    "COPERNICUS_CLIENT_SECRET"
-)
-
 
 app = FastAPI(
     title=APP_TITLE,
@@ -76,12 +60,12 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "https://skcreator470-droid.github.io",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-],
+        "https://skcreator470-droid.github.io",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -172,6 +156,8 @@ def init_db():
         """
     )
 
+    # Real initial fleet record.
+    # This is not fake shipment/alert data.
     cur.execute(
         """
         INSERT OR IGNORE INTO vehicles
@@ -632,11 +618,14 @@ def geocode(q: str):
                 "addressdetails": 1,
                 "countrycodes": "in",
             },
-headers={
-    "User-Agent": "NER-Smart-Logistics/1.0 (contact: your-skcreator470@gmail.com)",
-    "Accept-Language": "en"
-},
-timeout=15,
+            headers={
+                "User-Agent": (
+                    "NER-Smart-Logistics/1.0 "
+                    "(contact: your-skcreator470@gmail.com)"
+                ),
+                "Accept-Language": "en",
+            },
+            timeout=15,
         )
 
         response.raise_for_status()
@@ -647,28 +636,56 @@ timeout=15,
 
         for place in places:
             try:
-                results.append({
-                    "name": place.get("display_name", ""),
-                    "lat": float(place["lat"]),
-                    "lon": float(place["lon"]),
-                })
-            except (KeyError, TypeError, ValueError):
+                results.append(
+                    {
+                        "name": place.get(
+                            "display_name",
+                            "",
+                        ),
+                        "lat": float(
+                            place["lat"]
+                        ),
+                        "lon": float(
+                            place["lon"]
+                        ),
+                    }
+                )
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+            ):
                 continue
 
-        return {"results": results}
+        return {
+            "results": results
+        }
 
     except requests.RequestException as e:
-        print("Geocoding request failed:", e)
+        print(
+            "Geocoding request failed:",
+            e,
+        )
+
         return {
             "results": [],
-            "error": "Location search service unavailable"
+            "error": (
+                "Location search service "
+                "unavailable"
+            ),
         }
 
     except Exception as e:
-        print("Geocoding error:", e)
+        print(
+            "Geocoding error:",
+            e,
+        )
+
         return {
             "results": [],
-            "error": "Location search failed"
+            "error": (
+                "Location search failed"
+            ),
         }
 
 
@@ -834,6 +851,7 @@ def risk_engine(
         reasons.append(
             "Heavy rainfall detected"
         )
+
     elif rain > 0:
         score += 10
         reasons.append(
@@ -845,6 +863,7 @@ def risk_engine(
         reasons.append(
             "Strong wind detected"
         )
+
     elif wind >= 30:
         score += 10
         reasons.append(
@@ -853,8 +872,10 @@ def risk_engine(
 
     if score >= 70:
         level = "High"
+
     elif score >= 40:
         level = "Medium"
+
     else:
         level = "Low"
 
@@ -865,258 +886,6 @@ def risk_engine(
     }
 
 
-# =========================================================
-# COPERNICUS
-# =========================================================
-
-_copernicus_token = None
-_copernicus_token_expiry = 0
-
-
-def get_copernicus_token():
-    global _copernicus_token
-    global _copernicus_token_expiry
-
-    if not COPERNICUS_CLIENT_ID:
-        return None
-
-    if not COPERNICUS_CLIENT_SECRET:
-        return None
-
-    if (
-        _copernicus_token
-        and time.time()
-        < _copernicus_token_expiry
-    ):
-        return _copernicus_token
-
-    response = requests.post(
-        COPERNICUS_TOKEN_URL,
-        data={
-            "grant_type":
-                "client_credentials",
-            "client_id":
-                COPERNICUS_CLIENT_ID,
-            "client_secret":
-                COPERNICUS_CLIENT_SECRET,
-        },
-        timeout=30,
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    _copernicus_token = data[
-        "access_token"
-    ]
-
-    _copernicus_token_expiry = (
-        time.time()
-        + int(
-            data.get(
-                "expires_in",
-                300,
-            )
-        )
-        - 60
-    )
-
-    return _copernicus_token
-
-
-
-def get_satellite_ndvi(lat: float, lon: float):
-    token = get_copernicus_token()
-
-    if not token:
-        return {
-            "available": False,
-            "message": "Copernicus credentials unavailable",
-            "source": "Copernicus Sentinel-2 L2A",
-        }
-
-    delta = 0.03
-
-    evalscript = """
-//VERSION=3
-function setup() {
-  return {
-    input: [{
-      bands: ["B04", "B08", "SCL", "dataMask"]
-    }],
-    output: [
-      {
-        id: "data",
-        bands: 1,
-        sampleType: "FLOAT32"
-      },
-      {
-        id: "dataMask",
-        bands: 1
-      }
-    ]
-  };
-}
-
-function evaluatePixel(sample) {
-  var denominator = sample.B08 + sample.B04;
-  var valid = 1;
-
-  if (denominator == 0) {
-    valid = 0;
-  }
-
-  if (sample.SCL == 6) {
-    valid = 0;
-  }
-
-  var ndvi = denominator == 0
-    ? 0
-    : (sample.B08 - sample.B04) / denominator;
-
-  return {
-    data: [ndvi],
-    dataMask: [sample.dataMask * valid]
-  };
-}
-"""
-
-    now = datetime.now(timezone.utc)
-    from_time = (now - timedelta(days=180)).strftime("%Y-%m-%dT00:00:00Z")
-    to_time = now.strftime("%Y-%m-%dT23:59:59Z")
-
-    payload = {
-        "input": {
-            "bounds": {
-                "bbox": [
-                    lon - delta,
-                    lat - delta,
-                    lon + delta,
-                    lat + delta
-                ],
-                "properties": {
-                    "crs": "http://www.opengis.net/def/crs/OGC/1.3/CRS84"
-                }
-            },
-            "data": [
-                {
-                    "type": "sentinel-2-l2a",
-                    "dataFilter": {
-                        "mosaickingOrder": "leastCC",
-                        "maxCloudCoverage": 90
-                    }
-                }
-            ]
-        },
-        "aggregation": {
-            "timeRange": {
-                "from": from_time,
-                "to": to_time
-            },
-            "aggregationInterval": {
-                "of": "P30D"
-            },
-            "evalscript": evalscript,
-            "resx": 20,
-            "resy": 20
-        }
-    }
-
-    url = "https://sh.dataspace.copernicus.eu/statistics/v1"
-
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    }
-
-    try:
-        response = requests.post(
-            url,
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-
-        if response.status_code != 200:
-            return {
-                "available": False,
-                "message": f"Copernicus API returned HTTP {response.status_code}: {response.text[:500]}",
-                "source": "Copernicus Sentinel-2 L2A",
-            }
-
-        data = response.json()
-
-        if data.get("status") != "OK" or not data.get("data"):
-            return {
-                "available": False,
-                "message": "No valid Sentinel-2 observation found",
-                "source": "Copernicus Sentinel-2 L2A",
-            }
-
-        observations = []
-
-        for item in data.get("data", []):
-            outputs = item.get("outputs", {})
-            data_output = outputs.get("data", {})
-            bands = data_output.get("bands", {})
-            b0 = bands.get("B0", {})
-            stats = b0.get("stats", {})
-
-            mean = stats.get("mean")
-            minimum = stats.get("min")
-            maximum = stats.get("max")
-            sample_count = stats.get("sampleCount", 0)
-
-            if mean is not None and sample_count:
-                observations.append({
-                    "mean": float(mean),
-                    "min": float(minimum) if minimum is not None else None,
-                    "max": float(maximum) if maximum is not None else None,
-                    "sample_count": int(sample_count),
-                    "interval": item.get("interval", {})
-                })
-
-        if not observations:
-            return {
-                "available": False,
-                "message": "No valid Sentinel-2 observation found for this location",
-                "source": "Copernicus Sentinel-2 L2A",
-                "analysis_period": "Last 180 days",
-                "cloud_filter_percent": 90
-            }
-
-        latest = observations[-1]
-
-        ndvi = latest["mean"]
-
-        if math.isfinite(ndvi):
-            return {
-                "available": True,
-                "message": "Sentinel-2 NDVI observation available",
-                "source": "Copernicus Sentinel-2 L2A",
-                "mean_ndvi": round(ndvi, 4),
-                "min_ndvi": round(latest["min"], 4) if latest["min"] is not None else None,
-                "max_ndvi": round(latest["max"], 4) if latest["max"] is not None else None,
-                "sample_count": latest["sample_count"],
-                "observation_period": latest["interval"],
-                "analysis_period": "Last 180 days",
-                "cloud_filter_percent": 90
-            }
-
-        return {
-            "available": False,
-            "message": "Sentinel-2 NDVI value was invalid",
-            "source": "Copernicus Sentinel-2 L2A",
-        }
-
-    except Exception as exc:
-        return {
-            "available": False,
-            "message": f"Satellite request failed: {exc}",
-            "source": "Copernicus Sentinel-2 L2A",
-        }
 # =========================================================
 # ROUTE ANALYSIS
 # =========================================================
@@ -1169,8 +938,10 @@ def build_route_result(
 
     if final_score >= 70:
         level = "High"
+
     elif final_score >= 40:
         level = "Medium"
+
     else:
         level = "Low"
 
@@ -1256,7 +1027,8 @@ def analyze_route(
     # Prefer route without a verified
     # spatial hazard intersection.
     safe_candidates = [
-        x for x in candidates
+        x
+        for x in candidates
         if not x[
             "route_hazard_affected"
         ]
@@ -1268,15 +1040,18 @@ def analyze_route(
             key=lambda x:
                 x["duration_minutes"],
         )
+
         route_selection = (
             "Safest available OSRM route"
         )
+
     else:
         selected = min(
             candidates,
             key=lambda x:
                 x["risk_score"],
         )
+
         route_selection = (
             "No hazard-free OSRM alternative "
             "was returned; lowest-risk candidate selected"
@@ -1290,6 +1065,10 @@ def analyze_route(
         len(geometry) // 2
     ]
 
+    # =====================================================
+    # REAL SATELLITE NDVI
+    # =====================================================
+    # Function imported from satellite.py
     satellite = get_satellite_ndvi(
         midpoint[0],
         midpoint[1],
@@ -1297,16 +1076,23 @@ def analyze_route(
 
     return {
         "success": True,
+
         "route": selected,
+
         "route_candidates": candidates,
+
         "route_selection":
             route_selection,
+
         "weather": weather,
+
         "satellite": satellite,
+
         "midpoint": {
             "lat": midpoint[0],
             "lon": midpoint[1],
         },
+
         "data_sources": [
             "OpenStreetMap",
             "OSRM",
@@ -1314,6 +1100,7 @@ def analyze_route(
             "Copernicus Sentinel-2 L2A",
             "NDMA SACHET",
         ],
+
         "warning":
             (
                 "Decision-support system. "
@@ -1596,7 +1383,9 @@ class ShipmentStatusUpdate(BaseModel):
     status: str
 
 
-@app.patch("/api/shipments/{shipment_id}/status")
+@app.patch(
+    "/api/shipments/{shipment_id}/status"
+)
 def update_shipment_status(
     shipment_id: int,
     data: ShipmentStatusUpdate,
@@ -1719,7 +1508,9 @@ class EmergencyRerouteRequest(BaseModel):
     vehicle_id: int
     destination_lat: float
     destination_lon: float
-    destination_name: str = "Emergency Destination"
+    destination_name: str = (
+        "Emergency Destination"
+    )
 
 
 @app.post("/api/emergency-reroute")
@@ -1780,7 +1571,10 @@ def emergency_reroute(
         candidates.append(
             build_route_result(
                 route,
-                f"Vehicle {vehicle['vehicle_number']}",
+                (
+                    f"Vehicle "
+                    f"{vehicle['vehicle_number']}"
+                ),
                 data.destination_name,
                 weather,
                 hazards,
@@ -1788,7 +1582,8 @@ def emergency_reroute(
         )
 
     safe_candidates = [
-        x for x in candidates
+        x
+        for x in candidates
         if not x[
             "route_hazard_affected"
         ]
@@ -1889,6 +1684,10 @@ async def startup_event():
     )
 
 
+# =========================================================
+# ROOT
+# =========================================================
+
 @app.get("/")
 def root():
     return {
@@ -1899,9 +1698,11 @@ def root():
         "version":
             "1.0.0",
     }
-    # ================================
+
+
+# =========================================================
 # REAL NER NEWS FEED
-# ================================
+# =========================================================
 
 import xml.etree.ElementTree as ET
 from urllib.parse import quote
@@ -1918,6 +1719,7 @@ NER_STATES = [
     "Sikkim",
     "Tripura",
 ]
+
 
 NER_HAZARD_KEYWORDS = [
     "flood",
@@ -1943,6 +1745,7 @@ def get_real_ner_news():
     all_news = []
 
     for state in NER_STATES:
+
         query = quote(
             f'"{state}" '
             f'(flood OR landslide OR "heavy rain" OR '
@@ -1958,45 +1761,76 @@ def get_real_ner_news():
             response = requests.get(
                 url,
                 headers={
-                    "User-Agent": "NER-Smart-Logistics/1.0"
+                    "User-Agent":
+                        "NER-Smart-Logistics/1.0"
                 },
                 timeout=10,
             )
 
             response.raise_for_status()
 
-            root = ET.fromstring(response.content)
+            root = ET.fromstring(
+                response.content
+            )
 
-            for item in root.findall("./channel/item"):
-                title = item.findtext("title", "").strip()
-                link = item.findtext("link", "").strip()
-                pub_date = item.findtext("pubDate", "").strip()
+            for item in root.findall(
+                "./channel/item"
+            ):
+
+                title = item.findtext(
+                    "title",
+                    "",
+                ).strip()
+
+                link = item.findtext(
+                    "link",
+                    "",
+                ).strip()
+
+                pub_date = item.findtext(
+                    "pubDate",
+                    "",
+                ).strip()
 
                 description = item.findtext(
-                    "description", ""
+                    "description",
+                    "",
                 ).strip()
 
                 text = (
                     f"{title} {description}"
                 ).lower()
 
-                # Strict NER state filter
+                # -----------------------------------------
+                # STRICT NER STATE FILTER
+                # -----------------------------------------
+
                 matched_state = None
 
                 for ner_state in NER_STATES:
-                    if ner_state.lower() in title.lower():
+                    if (
+                        ner_state.lower()
+                        in title.lower()
+                    ):
                         matched_state = ner_state
                         break
 
                 if not matched_state:
                     continue
 
-                # Hazard classification
-                matched_hazard = "General NER News"
+                # -----------------------------------------
+                # HAZARD CLASSIFICATION
+                # -----------------------------------------
+
+                matched_hazard = (
+                    "General NER News"
+                )
 
                 for keyword in NER_HAZARD_KEYWORDS:
                     if keyword in text:
-                        matched_hazard = keyword.title()
+                        matched_hazard = (
+                            keyword.title()
+                        )
                         break
 
                 published_iso = None
@@ -2008,41 +1842,78 @@ def get_real_ner_news():
                                 pub_date
                             ).isoformat()
                         )
+
                     except Exception:
                         published_iso = pub_date
 
-                all_news.append({
-                    "state": matched_state,
-                    "title": title,
-                    "description": description,
-                    "source": "Google News RSS",
-                    "published_at": published_iso,
-                    "link": link,
-                    "category": matched_hazard,
-                    "live": True,
-                })
+                all_news.append(
+                    {
+                        "state":
+                            matched_state,
+
+                        "title":
+                            title,
+
+                        "description":
+                            description,
+
+                        "source":
+                            "Google News RSS",
+
+                        "published_at":
+                            published_iso,
+
+                        "link":
+                            link,
+
+                        "category":
+                            matched_hazard,
+
+                        "live":
+                            True,
+                    }
+                )
 
         except Exception as e:
             print(
                 f"NER news fetch failed for {state}:",
-                e
+                e,
             )
 
-    # Remove duplicate articles
+    # ---------------------------------------------
+    # REMOVE DUPLICATES
+    # ---------------------------------------------
+
     unique_news = {}
+
     for article in all_news:
+
         key = (
-            article["title"].lower().strip(),
-            article["link"],
+            article[
+                "title"
+            ].lower().strip(),
+
+            article[
+                "link"
+            ],
         )
 
         unique_news[key] = article
 
-    news = list(unique_news.values())
+    news = list(
+        unique_news.values()
+    )
 
-    # Latest first
+    # ---------------------------------------------
+    # LATEST FIRST
+    # ---------------------------------------------
+
     news.sort(
-        key=lambda x: x.get("published_at") or "",
+        key=lambda x:
+            x.get(
+                "published_at"
+            )
+            or "",
         reverse=True,
     )
 
@@ -2051,33 +1922,62 @@ def get_real_ner_news():
 
 @app.get("/api/ner-news")
 def ner_news():
+
     news = get_real_ner_news()
 
     NON_NER_STATES = [
-        "Andhra Pradesh", "Bihar", "Chhattisgarh", "Goa", "Gujarat",
-        "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
-        "Kerala", "Madhya Pradesh", "Maharashtra", "Odisha",
-        "Punjab", "Rajasthan", "Tamil Nadu", "Telangana",
-        "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
+        "Andhra Pradesh",
+        "Bihar",
+        "Chhattisgarh",
+        "Goa",
+        "Gujarat",
+        "Haryana",
+        "Himachal Pradesh",
+        "Jharkhand",
+        "Karnataka",
+        "Kerala",
+        "Madhya Pradesh",
+        "Maharashtra",
+        "Odisha",
+        "Punjab",
+        "Rajasthan",
+        "Tamil Nadu",
+        "Telangana",
+        "Uttar Pradesh",
+        "Uttarakhand",
+        "West Bengal",
+        "Delhi",
     ]
 
     news = [
-        article for article in news
+        article
+        for article in news
         if not any(
-            state.lower() in article.get("title", "").lower()
+            state.lower()
+            in article.get(
+                "title",
+                "",
+            ).lower()
             for state in NON_NER_STATES
         )
     ]
 
     return {
-        "live": True,
-        "region": "North Eastern Region of India",
-        "states": NER_STATES,
-        "count": len(news),
-        "source": "Google News RSS",
-        "news": news,
+        "live":
+            True,
+
+        "region":
+            "North Eastern Region of India",
+
+        "states":
+            NER_STATES,
+
+        "count":
+            len(news),
+
+        "source":
+            "Google News RSS",
+
+        "news":
+            news,
     }
-
-
-
-
