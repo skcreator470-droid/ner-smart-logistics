@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useEffect,
   useMemo,
   useRef,
@@ -407,7 +407,7 @@ function App() {
     try {
       const data =
         await apiFetch(
-          "/api/ner-news"
+          "/api/live-alerts"
         );
 
       setNerNews(
@@ -1284,7 +1284,7 @@ function App() {
                           const district = item.district || item.city || "";
                           const state = item.state || "";
                           const meta = [district, state].filter(Boolean).join(", ");
-                          return meta ? `${displayName} — ${meta}` : displayName;
+                          return meta ? `${displayName} â€” ${meta}` : displayName;
                         })()}
                       </button>
                     )
@@ -1348,7 +1348,7 @@ function App() {
                           const district = item.district || item.city || "";
                           const state = item.state || "";
                           const meta = [district, state].filter(Boolean).join(", ");
-                          return meta ? `${displayName} — ${meta}` : displayName;
+                          return meta ? `${displayName} â€” ${meta}` : displayName;
                         })()}
                       </button>
                     )
@@ -1467,7 +1467,7 @@ function App() {
             >
 
               <TileLayer
-                attribution="© OpenStreetMap contributors"
+                attribution="Â© OpenStreetMap contributors"
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
@@ -1640,7 +1640,7 @@ function App() {
               }
             >
               {route
-                ? `${route.risk_score} · ${route.risk_level}`
+                ? `${route.risk_score} Â· ${route.risk_level}`
                 : "--"}
             </strong>
 
@@ -1833,7 +1833,7 @@ function App() {
             <div>
 
               <h2>
-                📰 Live NER News
+                ðŸ“° Live NER News
               </h2>
 
               <p>
@@ -1889,12 +1889,12 @@ function App() {
                       </strong>
 
                       <span>
-                        📍 {" "}
+                        ðŸ“ {" "}
                         {
                           article.state
                         }
 
-                        {" • "}
+                        {" â€¢ "}
 
                         {
                           article.category ||
@@ -1922,7 +1922,7 @@ function App() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Read News →
+                        Read News â†’
                       </a>
                     )}
 
@@ -1976,7 +1976,7 @@ function App() {
                   <strong>
                     {
                       weather.temperature_c
-                    }°C
+                    }Â°C
                   </strong>
 
                 </div>
@@ -2393,7 +2393,7 @@ function App() {
                           shipment.origin
                         }
 
-                        {" → "}
+                        {" â†’ "}
 
                         {
                           shipment.destination
@@ -2504,7 +2504,7 @@ function App() {
           </span>
 
           <span>
-            Decision-support system —
+            Decision-support system â€”
             not a guaranteed road-closure
             or safety authority.
           </span>
@@ -2518,3 +2518,4 @@ function App() {
 }
 
 export default App;
+

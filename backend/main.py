@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import hashlib
 import hmac
 import json
@@ -22,7 +22,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from hazards import (
+from backend.hazards import (
     SACHET_URL,
     sachet_feed,
     score_route_hazards,
@@ -30,7 +30,7 @@ from hazards import (
 
 # IMPORTANT:
 # Satellite NDVI function ab satellite.py se aayega.
-from satellite import get_satellite_ndvi
+from backend.satellite import get_satellite_ndvi
 
 load_dotenv()
 
@@ -1981,3 +1981,8 @@ def ner_news():
         "news":
             news,
     }
+
+
+from backend.live_alerts import router as live_alert_router
+app.include_router(live_alert_router)
+
