@@ -601,94 +601,230 @@ def logout(request: Request):
 # GEOCODING
 # =========================================================
 
+# =========================================================
+# NER GEOCODING
+# =========================================================
+
+NER_STATES = [
+    "Assam",
+    "Arunachal Pradesh",
+    "Manipur",
+    "Meghalaya",
+    "Mizoram",
+    "Nagaland",
+    "Sikkim",
+    "Tripura",
+]
+
+
 @app.get("/api/geocode")
 def geocode(q: str):
-    query = q.strip()
+    query = " ".join(q.strip().split())
 
     if not query:
         return {"results": []}
 
-    try:
-        response = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": query,
-                "format": "jsonv2",
-                "limit": 5,
-                "addressdetails": 1,
-                "countrycodes": "in",
-            },
-            headers={
-                "User-Agent": (
-                    "NER-Smart-Logistics/1.0 "
-                    "(contact: your-skcreator470@gmail.com)"
-                ),
-                "Accept-Language": "en",
-            },
-            timeout=15,
+    # Normalize: Kohima,Nagaland -> Kohima, Nagaland
+    query = ", ".join(
+        part.strip()
+        for part in query.split(",")
+        if part.strip()
+    )
+
+    # -----------------------------------------------------
+    # NER-FIRST SEARCH
+    # -----------------------------------------------------
+
+    search_queries = []
+
+    # User query as entered
+    search_queries.append(query)
+
+    # NER states ko search priority do
+    query_lower = query.lower()
+
+    matched_state = None
+
+    for state in NER_STATES:
+        if state.lower() in query_lower:
+            matched_state = state
+            break
+
+    # Agar state nahi diya hai, NER region mein search karo
+    if not matched_state:
+        for state in NER_STATES:
+            search_queries.append(
+                f"{query}, {state}, India"
+            )
+
+    # Agar state diya hai, India add karo
+    elif "india" not in query_lower:
+        search_queries.insert(
+            0,
+            f"{query}, India"
         )
 
-        response.raise_for_status()
+    headers = {
+        "User-Agent": (
+            "NER-Smart-Logistics/1.0 "
+            "(contact: skcreator470@gmail.com)"
+        ),
+        "Accept": "application/json",
+        "Accept-Language": "en-IN,en",
+    }
 
-        places = response.json()
+    results = []
+    seen = set()
 
-        results = []
+    # -----------------------------------------------------
+    # SEARCH OSM / NOMINATIM
+    # -----------------------------------------------------
 
-        for place in places:
-            try:
-                results.append(
-                    {
-                        "name": place.get(
-                            "display_name",
-                            "",
-                        ),
-                        "lat": float(
-                            place["lat"]
-                        ),
-                        "lon": float(
-                            place["lon"]
-                        ),
-                    }
-                )
-            except (
-                KeyError,
-                TypeError,
-                ValueError,
-            ):
+    for search_query in search_queries:
+
+        try:
+            response = requests.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": search_query,
+                    "format": "jsonv2",
+                    "limit": 10,
+                    "addressdetails": 1,
+                    "dedupe": 1,
+                },
+                headers=headers,
+                timeout=20,
+            )
+
+            response.raise_for_status()
+
+            places = response.json()
+
+            if not isinstance(places, list):
                 continue
 
-        return {
-            "results": results
-        }
+            for place in places:
 
-    except requests.RequestException as e:
-        print(
-            "Geocoding request failed:",
-            e,
-        )
+                try:
+                    lat = float(place["lat"])
+                    lon = float(place["lon"])
 
-        return {
-            "results": [],
-            "error": (
-                "Location search service "
-                "unavailable"
-            ),
-        }
+                    address = place.get(
+                        "address",
+                        {},
+                    )
 
-    except Exception as e:
-        print(
-            "Geocoding error:",
-            e,
-        )
+                    state = address.get(
+                        "state",
+                        "",
+                    )
 
-        return {
-            "results": [],
-            "error": (
-                "Location search failed"
-            ),
-        }
+                    # -------------------------------------------------
+                    # NER FILTER
+                    # -------------------------------------------------
 
+                    is_ner = any(
+                        ner_state.lower()
+                        in (
+                            state
+                            or place.get(
+                                "display_name",
+                                "",
+                            )
+                        ).lower()
+                        for ner_state in NER_STATES
+                    )
 
+                    if not is_ner:
+                        continue
+
+                    display_name = place.get(
+                        "display_name",
+                        "",
+                    )
+
+                    name = (
+                        place.get("name")
+                        or address.get("city")
+                        or address.get("town")
+                        or address.get("municipality")
+                        or address.get("village")
+                        or address.get("county")
+                        or display_name
+                    )
+
+                    # Duplicate remove
+                    key = (
+                        round(lat, 6),
+                        round(lon, 6),
+                    )
+
+                    if key in seen:
+                        continue
+
+                    seen.add(key)
+
+                    results.append(
+                        {
+                            "name": name,
+                            "display_name": display_name,
+                            "lat": lat,
+                            "lon": lon,
+                            "city": (
+                                address.get("city")
+                                or address.get("town")
+                                or address.get("municipality")
+                                or address.get("village")
+                                or ""
+                            ),
+                            "district": (
+                                address.get("county")
+                                or ""
+                            ),
+                            "state": state,
+                            "country": (
+                                address.get(
+                                    "country",
+                                    "India",
+                                )
+                            ),
+                        }
+                    )
+
+                except (
+                    KeyError,
+                    TypeError,
+                    ValueError,
+                ):
+                    continue
+
+            # Direct query ke results mil gaye
+            # to unnecessary extra NER requests mat karo
+            if results and matched_state:
+                break
+
+        except requests.RequestException as e:
+            print(
+                "NER geocoding request failed:",
+                search_query,
+                e,
+            )
+
+        except Exception as e:
+            print(
+                "NER geocoding error:",
+                search_query,
+                e,
+            )
+
+    return {
+        "success": True,
+        "query": query,
+        "region": "North Eastern Region of India",
+        "states": NER_STATES,
+        "count": len(results),
+        "results": results[:20],
+    }
 # =========================================================
 # ROUTING
 # =========================================================
