@@ -388,7 +388,6 @@ function App() {
         loadShipments(),
         loadAlerts(),
         loadHazards(),
-
         loadNerNews(),
       ]);
     } catch (error) {
@@ -400,7 +399,7 @@ function App() {
   }
 
   // =====================================================
-  // REAL NER NEWS
+  // REAL NER NEWS / LIVE ALERTS
   // =====================================================
 
   async function loadNerNews() {
@@ -409,20 +408,51 @@ function App() {
         await apiFetch(
           "/api/live-alerts"
         );
-      const liveNews = Array.isArray(data.alerts)
-        ? data.alerts.map((alert) => ({
-            title: alert.title || alert.event || "NDMA SACHET Alert",
-            description: alert.description || "",
-            category: alert.event || "Disaster Alert",
-            published_at: alert.effective || "",
-            link: "",
-            source: alert.source || "NDMA SACHET",
-            severity: alert.severity || "LOW",
-            state: alert.state || alert.area || ""
-          }))
-        : [];
 
-      setNerNews(liveNews);
+      const liveNews =
+        Array.isArray(data.alerts)
+          ? data.alerts.map(
+              (alert) => ({
+                title:
+                  alert.title ||
+                  alert.event ||
+                  "NDMA SACHET Alert",
+
+                description:
+                  alert.description ||
+                  "",
+
+                category:
+                  alert.event ||
+                  "Disaster Alert",
+
+                published_at:
+                  alert.effective ||
+                  "",
+
+                link:
+                  alert.link ||
+                  "",
+
+                source:
+                  alert.source ||
+                  "NDMA SACHET",
+
+                severity:
+                  alert.severity ||
+                  "LOW",
+
+                state:
+                  alert.state ||
+                  alert.area ||
+                  "",
+              })
+            )
+          : [];
+
+      setNerNews(
+        liveNews
+      );
     } catch (error) {
       console.error(
         "NER news fetch failed:",
@@ -548,7 +578,11 @@ function App() {
     value,
     type
   ) {
-    if (!value.trim()) {
+    const query =
+      value.trim();
+
+    // Empty input
+    if (!query) {
       if (type === "start") {
         setStartSuggestions([]);
       } else {
@@ -558,16 +592,25 @@ function App() {
       return;
     }
 
+    // Search after at least 2 characters
+    if (query.length < 2) {
+      return;
+    }
+
     try {
       const data =
         await apiFetch(
           `/api/geocode?q=${encodeURIComponent(
-            value
+            query
           )}`
         );
 
       const results =
-        data.results || [];
+        Array.isArray(
+          data.results
+        )
+          ? data.results
+          : [];
 
       if (type === "start") {
         setStartSuggestions(
@@ -580,9 +623,15 @@ function App() {
       }
     } catch (error) {
       console.error(
-        "Location search failed:",
+        `Location search failed for ${type}:`,
         error
       );
+
+      if (type === "start") {
+        setStartSuggestions([]);
+      } else {
+        setDestinationSuggestions([]);
+      }
     }
   }
 
@@ -605,9 +654,13 @@ function App() {
       "";
 
     if (type === "start") {
-      setStart(locationName);
+      setStart(
+        locationName
+      );
 
-      setStartCoords(coords);
+      setStartCoords(
+        coords
+      );
 
       setStartSuggestions([]);
     } else {
@@ -1288,11 +1341,35 @@ function App() {
                         }
                       >
                         {(() => {
-                          const displayName = item.name || item.display_name || "";
-                          const district = item.district || item.city || "";
-                          const state = item.state || "";
-                          const meta = [district, state].filter(Boolean).join(", ");
-                          return meta ? `${displayName} â€” ${meta}` : displayName;
+                          const displayName =
+                            item.name ||
+                            item.display_name ||
+                            "";
+
+                          const district =
+                            item.district ||
+                            item.city ||
+                            "";
+
+                          const state =
+                            item.state ||
+                            "";
+
+                          const meta =
+                            [
+                              district,
+                              state,
+                            ]
+                              .filter(
+                                Boolean
+                              )
+                              .join(
+                                ", "
+                              );
+
+                          return meta
+                            ? `${displayName} — ${meta}`
+                            : displayName;
                         })()}
                       </button>
                     )
@@ -1352,11 +1429,35 @@ function App() {
                         }
                       >
                         {(() => {
-                          const displayName = item.name || item.display_name || "";
-                          const district = item.district || item.city || "";
-                          const state = item.state || "";
-                          const meta = [district, state].filter(Boolean).join(", ");
-                          return meta ? `${displayName} â€” ${meta}` : displayName;
+                          const displayName =
+                            item.name ||
+                            item.display_name ||
+                            "";
+
+                          const district =
+                            item.district ||
+                            item.city ||
+                            "";
+
+                          const state =
+                            item.state ||
+                            "";
+
+                          const meta =
+                            [
+                              district,
+                              state,
+                            ]
+                              .filter(
+                                Boolean
+                              )
+                              .join(
+                                ", "
+                              );
+
+                          return meta
+                            ? `${displayName} — ${meta}`
+                            : displayName;
                         })()}
                       </button>
                     )
@@ -1475,7 +1576,7 @@ function App() {
             >
 
               <TileLayer
-                attribution="Â© OpenStreetMap contributors"
+                attribution="© OpenStreetMap contributors"
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
 
@@ -1648,7 +1749,7 @@ function App() {
               }
             >
               {route
-                ? `${route.risk_score} Â· ${route.risk_level}`
+                ? `${route.risk_score} · ${route.risk_level}`
                 : "--"}
             </strong>
 
@@ -1841,7 +1942,7 @@ function App() {
             <div>
 
               <h2>
-                ðŸ“° Live NER News
+                📰 Live NER News
               </h2>
 
               <p>
@@ -1897,12 +1998,13 @@ function App() {
                       </strong>
 
                       <span>
-                        ðŸ“ {" "}
+                        📍{" "}
                         {
-                          article.state
+                          article.state ||
+                          "North Eastern Region"
                         }
 
-                        {" â€¢ "}
+                        {" • "}
 
                         {
                           article.category ||
@@ -1930,7 +2032,7 @@ function App() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        Read News â†’
+                        Read News →
                       </a>
                     )}
 
@@ -1984,7 +2086,7 @@ function App() {
                   <strong>
                     {
                       weather.temperature_c
-                    }Â°C
+                    }°C
                   </strong>
 
                 </div>
@@ -2401,7 +2503,7 @@ function App() {
                           shipment.origin
                         }
 
-                        {" â†’ "}
+                        {" → "}
 
                         {
                           shipment.destination
@@ -2415,7 +2517,6 @@ function App() {
                       </span>
 
                     </div>
-
                   )
                 )}
 
@@ -2512,7 +2613,7 @@ function App() {
           </span>
 
           <span>
-            Decision-support system â€”
+            Decision-support system —
             not a guaranteed road-closure
             or safety authority.
           </span>
@@ -2526,6 +2627,3 @@ function App() {
 }
 
 export default App;
-
-
-
