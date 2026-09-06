@@ -1899,5 +1899,185 @@ def root():
         "version":
             "1.0.0",
     }
+    # ================================
+# REAL NER NEWS FEED
+# ================================
+
+import xml.etree.ElementTree as ET
+from urllib.parse import quote
+from email.utils import parsedate_to_datetime
+
+
+NER_STATES = [
+    "Assam",
+    "Arunachal Pradesh",
+    "Manipur",
+    "Meghalaya",
+    "Mizoram",
+    "Nagaland",
+    "Sikkim",
+    "Tripura",
+]
+
+NER_HAZARD_KEYWORDS = [
+    "flood",
+    "flash flood",
+    "landslide",
+    "mudslide",
+    "road blocked",
+    "road closure",
+    "road closed",
+    "heavy rain",
+    "very heavy rain",
+    "thunderstorm",
+    "lightning",
+    "storm",
+    "earthquake",
+    "bridge damaged",
+    "railway disruption",
+    "road disruption",
+]
+
+
+def get_real_ner_news():
+    all_news = []
+
+    for state in NER_STATES:
+        query = quote(
+            f'"{state}" '
+            f'(flood OR landslide OR "heavy rain" OR '
+            f"road OR weather OR earthquake OR disruption)"
+        )
+
+        url = (
+            "https://news.google.com/rss/search"
+            f"?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+        )
+
+        try:
+            response = requests.get(
+                url,
+                headers={
+                    "User-Agent": "NER-Smart-Logistics/1.0"
+                },
+                timeout=10,
+            )
+
+            response.raise_for_status()
+
+            root = ET.fromstring(response.content)
+
+            for item in root.findall("./channel/item"):
+                title = item.findtext("title", "").strip()
+                link = item.findtext("link", "").strip()
+                pub_date = item.findtext("pubDate", "").strip()
+
+                description = item.findtext(
+                    "description", ""
+                ).strip()
+
+                text = (
+                    f"{title} {description}"
+                ).lower()
+
+                # Strict NER state filter
+                matched_state = None
+
+                for ner_state in NER_STATES:
+                    if ner_state.lower() in title.lower():
+                        matched_state = ner_state
+                        break
+
+                if not matched_state:
+                    continue
+
+                # Hazard classification
+                matched_hazard = "General NER News"
+
+                for keyword in NER_HAZARD_KEYWORDS:
+                    if keyword in text:
+                        matched_hazard = keyword.title()
+                        break
+
+                published_iso = None
+
+                if pub_date:
+                    try:
+                        published_iso = (
+                            parsedate_to_datetime(
+                                pub_date
+                            ).isoformat()
+                        )
+                    except Exception:
+                        published_iso = pub_date
+
+                all_news.append({
+                    "state": matched_state,
+                    "title": title,
+                    "description": description,
+                    "source": "Google News RSS",
+                    "published_at": published_iso,
+                    "link": link,
+                    "category": matched_hazard,
+                    "live": True,
+                })
+
+        except Exception as e:
+            print(
+                f"NER news fetch failed for {state}:",
+                e
+            )
+
+    # Remove duplicate articles
+    unique_news = {}
+    for article in all_news:
+        key = (
+            article["title"].lower().strip(),
+            article["link"],
+        )
+
+        unique_news[key] = article
+
+    news = list(unique_news.values())
+
+    # Latest first
+    news.sort(
+        key=lambda x: x.get("published_at") or "",
+        reverse=True,
+    )
+
+    return news[:100]
+
+
+@app.get("/api/ner-news")
+def ner_news():
+    news = get_real_ner_news()
+
+    NON_NER_STATES = [
+        "Andhra Pradesh", "Bihar", "Chhattisgarh", "Goa", "Gujarat",
+        "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+        "Kerala", "Madhya Pradesh", "Maharashtra", "Odisha",
+        "Punjab", "Rajasthan", "Tamil Nadu", "Telangana",
+        "Uttar Pradesh", "Uttarakhand", "West Bengal", "Delhi"
+    ]
+
+    news = [
+        article for article in news
+        if not any(
+            state.lower() in article.get("title", "").lower()
+            for state in NON_NER_STATES
+        )
+    ]
+
+    return {
+        "live": True,
+        "region": "North Eastern Region of India",
+        "states": NER_STATES,
+        "count": len(news),
+        "source": "Google News RSS",
+        "news": news,
+    }
+
+
 
 
