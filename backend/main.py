@@ -483,8 +483,8 @@ def signup(data: SignupRequest):
         COOKIE_NAME,
         token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         max_age=7 * 24 * 60 * 60,
     )
 
@@ -1985,6 +1985,9 @@ def ner_news():
 
 from live_alerts import router as live_alert_router
 app.include_router(live_alert_router)
+
+
+
 
 
 
