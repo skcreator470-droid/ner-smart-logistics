@@ -20,26 +20,35 @@ import "leaflet/dist/leaflet.css";
 import "./App.css";
 import DriverTracker from "./DriverTracker";
 
+// =====================================================
+// PRODUCTION BACKEND
+// =====================================================
 
 const API_URL =
-  "https://ner-smart-logistics-3hbr.onrender.com";
+  "https://ner-smart-logistics-1.onrender.com";
 
+// =====================================================
+// LEAFLET ICON FIX
+// =====================================================
 
 delete L.Icon.Default.prototype._getIconUrl;
 
 L.Icon.Default.mergeOptions({
   iconRetinaUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+
   iconUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+
   shadowUrl:
     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
+// =====================================================
+// MAP CONTROLLER
+// =====================================================
 
-function MapController({
-  route,
-}) {
+function MapController({ route }) {
   const map = useMap();
 
   useEffect(() => {
@@ -47,22 +56,21 @@ function MapController({
       return;
     }
 
-    const bounds =
-      L.latLngBounds(
-        route.geometry
-      );
-
-    map.fitBounds(
-      bounds,
-      {
-        padding: [40, 40],
-      }
+    const bounds = L.latLngBounds(
+      route.geometry
     );
+
+    map.fitBounds(bounds, {
+      padding: [40, 40],
+    });
   }, [route, map]);
 
   return null;
 }
 
+// =====================================================
+// APP
+// =====================================================
 
 function App() {
   // =====================================================
@@ -87,7 +95,6 @@ function App() {
       email: "",
       password: "",
     });
-
 
   // =====================================================
   // ROUTE
@@ -126,12 +133,18 @@ function App() {
   const [satellite, setSatellite] =
     useState(null);
 
+  // =====================================================
+  // REAL NER NEWS
+  // =====================================================
+
+  const [nerNews, setNerNews] =
+    useState([]);
+
   const [routeLoading, setRouteLoading] =
     useState(false);
 
   const [routeError, setRouteError] =
     useState("");
-
 
   // =====================================================
   // HAZARDS
@@ -148,7 +161,6 @@ function App() {
 
   const [hazardError, setHazardError] =
     useState("");
-
 
   // =====================================================
   // FLEET
@@ -169,7 +181,6 @@ function App() {
   const watchIdRef =
     useRef(null);
 
-
   // =====================================================
   // LOGISTICS
   // =====================================================
@@ -186,7 +197,6 @@ function App() {
   const [message, setMessage] =
     useState("");
 
-
   // =====================================================
   // AUTH CHECK
   // =====================================================
@@ -194,7 +204,6 @@ function App() {
   useEffect(() => {
     checkAuth();
   }, []);
-
 
   async function checkAuth() {
     try {
@@ -213,16 +222,17 @@ function App() {
         setUser(data.user);
       }
     } catch {
-      // Backend may not be running yet.
+      // Backend may be sleeping/unavailable.
     } finally {
       setAuthLoading(false);
     }
   }
 
+  // =====================================================
+  // LOGIN / SIGNUP
+  // =====================================================
 
-  async function submitAuth(
-    event
-  ) {
+  async function submitAuth(event) {
     event.preventDefault();
 
     setAuthError("");
@@ -235,10 +245,8 @@ function App() {
     const body =
       authMode === "login"
         ? {
-            email:
-              authForm.email,
-            password:
-              authForm.password,
+            email: authForm.email,
+            password: authForm.password,
           }
         : authForm;
 
@@ -248,12 +256,14 @@ function App() {
           `${API_URL}${endpoint}`,
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
             },
-            credentials:
-              "include",
+
+            credentials: "include",
+
             body:
               JSON.stringify(body),
           }
@@ -276,7 +286,6 @@ function App() {
         email: "",
         password: "",
       });
-
     } catch (error) {
       setAuthError(
         error.message
@@ -284,6 +293,9 @@ function App() {
     }
   }
 
+  // =====================================================
+  // LOGOUT
+  // =====================================================
 
   async function logout() {
     try {
@@ -302,7 +314,6 @@ function App() {
     setRoute(null);
   }
 
-
   // =====================================================
   // API HELPER
   // =====================================================
@@ -316,20 +327,26 @@ function App() {
         `${API_URL}${path}`,
         {
           ...options,
-          credentials:
-            "include",
+          credentials: "include",
         }
       );
 
     if (response.status === 401) {
       setUser(null);
+
       throw new Error(
         "Session expired. Please login again."
       );
     }
 
-    const data =
-      await response.json();
+    let data = {};
+
+    try {
+      data =
+        await response.json();
+    } catch {
+      data = {};
+    }
 
     if (!response.ok) {
       throw new Error(
@@ -340,7 +357,6 @@ function App() {
 
     return data;
   }
-
 
   // =====================================================
   // LOAD DASHBOARD DATA
@@ -365,7 +381,6 @@ function App() {
       );
   }, [user]);
 
-
   async function loadDashboard() {
     try {
       await Promise.all([
@@ -373,12 +388,46 @@ function App() {
         loadShipments(),
         loadAlerts(),
         loadHazards(),
+
+        loadNerNews(),
       ]);
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Dashboard refresh failed:",
+        error
+      );
     }
   }
 
+  // =====================================================
+  // REAL NER NEWS
+  // =====================================================
+
+  async function loadNerNews() {
+    try {
+      const data =
+        await apiFetch(
+          "/api/ner-news"
+        );
+
+      setNerNews(
+        Array.isArray(data.news)
+          ? data.news
+          : []
+      );
+    } catch (error) {
+      console.error(
+        "NER news fetch failed:",
+        error
+      );
+
+      setNerNews([]);
+    }
+  }
+
+  // =====================================================
+  // VEHICLES
+  // =====================================================
 
   async function loadVehicles() {
     const data =
@@ -386,20 +435,26 @@ function App() {
         "/api/vehicles"
       );
 
+    const loadedVehicles =
+      data.vehicles || [];
+
     setVehicles(
-      data.vehicles || []
+      loadedVehicles
     );
 
     if (
       !selectedVehicleId &&
-      data.vehicles?.length
+      loadedVehicles.length
     ) {
       setSelectedVehicleId(
-        data.vehicles[0].id
+        loadedVehicles[0].id
       );
     }
   }
 
+  // =====================================================
+  // SHIPMENTS
+  // =====================================================
 
   async function loadShipments() {
     const data =
@@ -412,6 +467,9 @@ function App() {
     );
   }
 
+  // =====================================================
+  // SYSTEM ALERTS
+  // =====================================================
 
   async function loadAlerts() {
     const data =
@@ -424,6 +482,9 @@ function App() {
     );
   }
 
+  // =====================================================
+  // HAZARDS
+  // =====================================================
 
   async function loadHazards() {
     setHazardStatus(
@@ -448,6 +509,7 @@ function App() {
         setHazardStatus(
           "LIVE"
         );
+
         setHazardError("");
       } else {
         setHazardStatus(
@@ -459,7 +521,6 @@ function App() {
             "SACHET feed unavailable"
         );
       }
-
     } catch (error) {
       setHazardStatus(
         "Unavailable"
@@ -471,9 +532,8 @@ function App() {
     }
   }
 
-
   // =====================================================
-  // SEARCH
+  // LOCATION SEARCH
   // =====================================================
 
   async function searchLocation(
@@ -498,41 +558,53 @@ function App() {
           )}`
         );
 
+      const results =
+        data.results || [];
+
       if (type === "start") {
         setStartSuggestions(
-          data.results || []
+          results
         );
       } else {
         setDestinationSuggestions(
-          data.results || []
+          results
         );
       }
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Location search failed:",
+        error
+      );
     }
   }
 
+  // =====================================================
+  // SELECT LOCATION
+  // =====================================================
 
   function selectLocation(
     item,
     type
   ) {
     const coords = {
-      lat: item.lat,
-      lon: item.lon,
+      lat: Number(item.lat),
+      lon: Number(item.lon),
     };
 
+    const locationName =
+      item.name ||
+      item.display_name ||
+      "";
+
     if (type === "start") {
-      setStart(
-        item.display_name
-      );
+      setStart(locationName);
 
       setStartCoords(coords);
 
       setStartSuggestions([]);
     } else {
       setDestination(
-        item.display_name
+        locationName
       );
 
       setDestinationCoords(
@@ -543,6 +615,9 @@ function App() {
     }
   }
 
+  // =====================================================
+  // ENSURE COORDINATES
+  // =====================================================
 
   async function ensureCoordinates(
     text,
@@ -569,11 +644,10 @@ function App() {
     }
 
     return {
-      lat: first.lat,
-      lon: first.lon,
+      lat: Number(first.lat),
+      lon: Number(first.lon),
     };
   }
-
 
   // =====================================================
   // ROUTE ANALYSIS
@@ -590,6 +664,7 @@ function App() {
       setRouteError(
         "Enter both start and destination."
       );
+
       return;
     }
 
@@ -616,20 +691,26 @@ function App() {
           "/api/analyze-route",
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
             },
+
             body:
               JSON.stringify({
                 start,
                 destination,
+
                 start_lat:
                   s.lat,
+
                 start_lon:
                   s.lon,
+
                 destination_lat:
                   d.lat,
+
                 destination_lon:
                   d.lon,
               }),
@@ -657,7 +738,6 @@ function App() {
       setSatellite(
         data.satellite
       );
-
     } catch (error) {
       setRouteError(
         error.message
@@ -667,9 +747,8 @@ function App() {
     }
   }
 
-
   // =====================================================
-  // GPS
+  // GPS TRACKING
   // =====================================================
 
   function startGpsTracking() {
@@ -681,6 +760,7 @@ function App() {
       setGpsError(
         "Browser GPS is not supported."
       );
+
       return;
     }
 
@@ -688,6 +768,13 @@ function App() {
       setGpsError(
         "Select a vehicle first."
       );
+
+      return;
+    }
+
+    if (
+      watchIdRef.current !== null
+    ) {
       return;
     }
 
@@ -705,14 +792,19 @@ function App() {
               "/api/location",
               {
                 method: "POST",
+
                 headers: {
                   "Content-Type":
                     "application/json",
                 },
+
                 body:
                   JSON.stringify({
                     vehicle_id:
-                      selectedVehicleId,
+                      Number(
+                        selectedVehicleId
+                      ),
+
                     lat,
                     lon,
                   }),
@@ -720,23 +812,28 @@ function App() {
             );
 
             await loadVehicles();
-
           } catch (error) {
             setGpsError(
               error.message
             );
           }
         },
+
         (error) => {
           setGpsError(
             error.message
           );
         },
+
         {
           enableHighAccuracy:
             true,
-          maximumAge: 5000,
-          timeout: 15000,
+
+          maximumAge:
+            5000,
+
+          timeout:
+            15000,
         }
       );
 
@@ -746,6 +843,9 @@ function App() {
     setGpsTracking(true);
   }
 
+  // =====================================================
+  // STOP GPS
+  // =====================================================
 
   function stopGpsTracking() {
     if (
@@ -763,7 +863,6 @@ function App() {
     setGpsTracking(false);
   }
 
-
   // =====================================================
   // EMERGENCY REROUTE
   // =====================================================
@@ -776,6 +875,7 @@ function App() {
       setRouteError(
         "Select a vehicle first."
       );
+
       return;
     }
 
@@ -783,25 +883,29 @@ function App() {
       setRouteError(
         "Analyze a destination first."
       );
+
       return;
     }
 
     const vehicle =
       vehicles.find(
         (v) =>
-          v.id ===
+          Number(v.id) ===
           Number(
             selectedVehicleId
           )
       );
 
     if (
-      !vehicle?.lat ||
-      !vehicle?.lon
+      vehicle?.lat === null ||
+      vehicle?.lat === undefined ||
+      vehicle?.lon === null ||
+      vehicle?.lon === undefined
     ) {
       setRouteError(
         "Vehicle has no GPS position. Start GPS tracking first."
       );
+
       return;
     }
 
@@ -813,20 +917,25 @@ function App() {
           "/api/emergency-reroute",
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
             },
+
             body:
               JSON.stringify({
                 vehicle_id:
                   Number(
                     selectedVehicleId
                   ),
+
                 destination_lat:
                   destinationCoords.lat,
+
                 destination_lon:
                   destinationCoords.lon,
+
                 destination_name:
                   destination,
               }),
@@ -850,7 +959,6 @@ function App() {
         data.selection ||
           "Emergency route recalculated."
       );
-
     } catch (error) {
       setRouteError(
         error.message
@@ -860,9 +968,8 @@ function App() {
     }
   }
 
-
   // =====================================================
-  // MAP DATA
+  // FLEET MARKERS
   // =====================================================
 
   const fleetMarkers =
@@ -871,14 +978,15 @@ function App() {
         vehicles.filter(
           (vehicle) =>
             vehicle.lat !== null &&
-            vehicle.lon !== null
+            vehicle.lat !== undefined &&
+            vehicle.lon !== null &&
+            vehicle.lon !== undefined
         ),
       [vehicles]
     );
 
-
   // =====================================================
-  // LOADING / AUTH UI
+  // AUTH LOADING
   // =====================================================
 
   if (authLoading) {
@@ -897,13 +1005,18 @@ function App() {
     );
   }
 
+  // =====================================================
+  // LOGIN / SIGNUP PAGE
+  // =====================================================
 
   if (!user) {
     return (
       <div className="auth-page">
+
         <div className="auth-card">
 
           <div className="brand-block">
+
             <span className="brand-badge">
               NER
             </span>
@@ -917,8 +1030,8 @@ function App() {
               Accessibility Intelligence
               Platform
             </p>
-          </div>
 
+          </div>
 
           <div className="auth-tabs">
 
@@ -929,9 +1042,7 @@ function App() {
                   : ""
               }
               onClick={() => {
-                setAuthMode(
-                  "login"
-                );
+                setAuthMode("login");
                 setAuthError("");
               }}
             >
@@ -945,9 +1056,7 @@ function App() {
                   : ""
               }
               onClick={() => {
-                setAuthMode(
-                  "signup"
-                );
+                setAuthMode("signup");
                 setAuthError("");
               }}
             >
@@ -955,7 +1064,6 @@ function App() {
             </button>
 
           </div>
-
 
           <form
             className="auth-form"
@@ -976,6 +1084,7 @@ function App() {
                   onChange={(e) =>
                     setAuthForm({
                       ...authForm,
+
                       name:
                         e.target.value,
                     })
@@ -985,7 +1094,6 @@ function App() {
                 />
               </label>
             )}
-
 
             <label>
               Email
@@ -998,6 +1106,7 @@ function App() {
                 onChange={(e) =>
                   setAuthForm({
                     ...authForm,
+
                     email:
                       e.target.value,
                   })
@@ -1006,7 +1115,6 @@ function App() {
                 required
               />
             </label>
-
 
             <label>
               Password
@@ -1019,6 +1127,7 @@ function App() {
                 onChange={(e) =>
                   setAuthForm({
                     ...authForm,
+
                     password:
                       e.target.value,
                   })
@@ -1028,13 +1137,11 @@ function App() {
               />
             </label>
 
-
             {authError && (
               <div className="error-box">
                 {authError}
               </div>
             )}
-
 
             <button
               className="primary-btn"
@@ -1049,10 +1156,10 @@ function App() {
           </form>
 
         </div>
+
       </div>
     );
   }
-
 
   // =====================================================
   // DASHBOARD
@@ -1060,6 +1167,10 @@ function App() {
 
   return (
     <div className="app-shell">
+
+      {/* =================================================
+          TOP BAR
+      ================================================= */}
 
       <header className="topbar">
 
@@ -1074,10 +1185,10 @@ function App() {
           </span>
         </div>
 
-
         <div className="user-area">
 
           <div className="user-info">
+
             <strong>
               {user.name}
             </strong>
@@ -1085,6 +1196,7 @@ function App() {
             <small>
               {user.email}
             </small>
+
           </div>
 
           <button
@@ -1098,16 +1210,16 @@ function App() {
 
       </header>
 
-
       <main className="dashboard">
 
-        {/* ===========================================
+        {/* =================================================
             ROUTE PLANNER
-        ============================================ */}
+        ================================================= */}
 
         <section className="panel route-panel">
 
           <div className="panel-title">
+
             <div>
               <h2>
                 Smart Route Planner
@@ -1118,12 +1230,15 @@ function App() {
                 satellite + live hazards
               </p>
             </div>
-          </div>
 
+          </div>
 
           <div className="search-grid">
 
+            {/* START */}
+
             <div className="search-field">
+
               <label>
                 Start
               </label>
@@ -1131,16 +1246,17 @@ function App() {
               <input
                 value={start}
                 onChange={(e) => {
-                  setStart(
-                    e.target.value
-                  );
+                  const value =
+                    e.target.value;
+
+                  setStart(value);
 
                   setStartCoords(
                     null
                   );
 
                   searchLocation(
-                    e.target.value,
+                    value,
                     "start"
                   );
                 }}
@@ -1154,6 +1270,7 @@ function App() {
                   {startSuggestions.map(
                     (item, index) => (
                       <button
+                        type="button"
                         key={index}
                         onClick={() =>
                           selectLocation(
@@ -1162,17 +1279,21 @@ function App() {
                           )
                         }
                       >
-                        {item.display_name}
+                        {item.name ||
+                          item.display_name}
                       </button>
                     )
                   )}
 
                 </div>
               )}
+
             </div>
 
+            {/* DESTINATION */}
 
             <div className="search-field">
+
               <label>
                 Destination
               </label>
@@ -1182,8 +1303,11 @@ function App() {
                   destination
                 }
                 onChange={(e) => {
+                  const value =
+                    e.target.value;
+
                   setDestination(
-                    e.target.value
+                    value
                   );
 
                   setDestinationCoords(
@@ -1191,7 +1315,7 @@ function App() {
                   );
 
                   searchLocation(
-                    e.target.value,
+                    value,
                     "destination"
                   );
                 }}
@@ -1205,6 +1329,7 @@ function App() {
                   {destinationSuggestions.map(
                     (item, index) => (
                       <button
+                        type="button"
                         key={index}
                         onClick={() =>
                           selectLocation(
@@ -1213,15 +1338,18 @@ function App() {
                           )
                         }
                       >
-                        {item.display_name}
+                        {item.name ||
+                          item.display_name}
                       </button>
                     )
                   )}
 
                 </div>
               )}
+
             </div>
 
+            {/* ANALYZE */}
 
             <button
               className="primary-btn route-btn"
@@ -1239,7 +1367,6 @@ function App() {
 
           </div>
 
-
           {routeError && (
             <div className="error-box">
               {routeError}
@@ -1254,14 +1381,14 @@ function App() {
 
         </section>
 
-
-        {/* ===========================================
+        {/* =================================================
             MAP
-        ============================================ */}
+        ================================================= */}
 
         <section className="panel map-panel">
 
           <div className="panel-title">
+
             <div>
               <h2>
                 Live Logistics Map
@@ -1308,15 +1435,14 @@ function App() {
               </button>
 
             </div>
-          </div>
 
+          </div>
 
           {gpsError && (
             <div className="error-box">
               {gpsError}
             </div>
           )}
-
 
           <div className="map-wrapper">
 
@@ -1334,7 +1460,6 @@ function App() {
                 attribution="© OpenStreetMap contributors"
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
               />
-
 
               {route && (
                 <>
@@ -1359,13 +1484,16 @@ function App() {
                       ]}
                     >
                       <Popup>
-                        Start
+                        <strong>
+                          Start
+                        </strong>
+
                         <br />
+
                         {start}
                       </Popup>
                     </Marker>
                   )}
-
 
                   {destinationCoords && (
                     <Marker
@@ -1375,8 +1503,12 @@ function App() {
                       ]}
                     >
                       <Popup>
-                        Destination
+                        <strong>
+                          Destination
+                        </strong>
+
                         <br />
+
                         {destination}
                       </Popup>
                     </Marker>
@@ -1384,7 +1516,6 @@ function App() {
 
                 </>
               )}
-
 
               {fleetMarkers.map(
                 (vehicle) => (
@@ -1397,7 +1528,9 @@ function App() {
                       vehicle.lon,
                     ]}
                   >
+
                     <Popup>
+
                       <strong>
                         {
                           vehicle.vehicle_number
@@ -1424,15 +1557,17 @@ function App() {
 
                       GPS:
                       {" "}
-                      {vehicle.lat.toFixed(
-                        5
-                      )}
+                      {Number(
+                        vehicle.lat
+                      ).toFixed(5)}
                       ,
                       {" "}
-                      {vehicle.lon.toFixed(
-                        5
-                      )}
+                      {Number(
+                        vehicle.lon
+                      ).toFixed(5)}
+
                     </Popup>
+
                   </Marker>
                 )
               )}
@@ -1443,14 +1578,14 @@ function App() {
 
         </section>
 
-
-        {/* ===========================================
+        {/* =================================================
             METRICS
-        ============================================ */}
+        ================================================= */}
 
         <section className="metrics-grid">
 
           <div className="metric-card">
+
             <span>
               Route Distance
             </span>
@@ -1460,10 +1595,11 @@ function App() {
                 ? `${route.distance_km} km`
                 : "--"}
             </strong>
+
           </div>
 
-
           <div className="metric-card">
+
             <span>
               ETA
             </span>
@@ -1473,10 +1609,11 @@ function App() {
                 ? `${route.duration_minutes} min`
                 : "--"}
             </strong>
+
           </div>
 
-
           <div className="metric-card">
+
             <span>
               Route Risk
             </span>
@@ -1496,10 +1633,11 @@ function App() {
                 ? `${route.risk_score} · ${route.risk_level}`
                 : "--"}
             </strong>
+
           </div>
 
-
           <div className="metric-card">
+
             <span>
               Live Vehicles
             </span>
@@ -1507,20 +1645,21 @@ function App() {
             <strong>
               {vehicles.length}
             </strong>
+
           </div>
 
         </section>
 
-
-        {/* ===========================================
-            HAZARDS
-        ============================================ */}
+        {/* =================================================
+            LIVE HAZARDS
+        ================================================= */}
 
         <section className="panel hazard-panel">
 
           <div className="panel-title">
 
             <div>
+
               <h2>
                 Live Hazard Monitor
               </h2>
@@ -1529,9 +1668,11 @@ function App() {
                 Official NDMA SACHET
                 multi-hazard feed
               </p>
+
             </div>
 
             <div className="hazard-status">
+
               <span
                 className={
                   hazardStatus ===
@@ -1551,10 +1692,10 @@ function App() {
               >
                 Refresh
               </button>
+
             </div>
 
           </div>
-
 
           {hazardError && (
             <div className="warning-box">
@@ -1562,28 +1703,33 @@ function App() {
             </div>
           )}
 
-
           {hazards.length ===
           0 ? (
+
             <div className="empty-state">
+
               <strong>
                 No active SACHET
                 alerts returned.
               </strong>
 
               <span>
-                This means the integrated
-                feed currently returned
+                The integrated feed
+                currently returned
                 zero active alerts.
-                No artificial hazard is
-                being generated.
+                No artificial hazard
+                is being generated.
               </span>
+
             </div>
+
           ) : (
+
             <div className="hazard-list">
 
               {hazards.map(
                 (hazard, index) => (
+
                   <div
                     className="hazard-card"
                     key={
@@ -1593,6 +1739,7 @@ function App() {
                   >
 
                     <div>
+
                       <span className="hazard-type">
                         {
                           hazard.hazard_type
@@ -1610,6 +1757,7 @@ function App() {
                           hazard.description
                         }
                       </p>
+
                     </div>
 
                     <div className="hazard-meta">
@@ -1643,12 +1791,13 @@ function App() {
                     </div>
 
                   </div>
+
                 )
               )}
 
             </div>
-          )}
 
+          )}
 
           {hazardUpdated && (
             <small className="muted">
@@ -1663,17 +1812,135 @@ function App() {
 
         </section>
 
+        {/* =================================================
+            REAL NER NEWS
+        ================================================= */}
 
-        {/* ===========================================
+        <section className="panel">
+
+          <div className="panel-title">
+
+            <div>
+
+              <h2>
+                📰 Live NER News
+              </h2>
+
+              <p>
+                Real-time news feed for
+                the 8 North Eastern states
+              </p>
+
+            </div>
+
+            <span className="safe-badge">
+              LIVE
+            </span>
+
+          </div>
+
+          {nerNews.length === 0 ? (
+
+            <div className="empty-state">
+
+              <strong>
+                No current verified
+                NER news available.
+              </strong>
+
+              <span>
+                The live news service
+                currently returned no
+                matching articles.
+              </span>
+
+            </div>
+
+          ) : (
+
+            <div className="alert-list">
+
+              {nerNews.map(
+                (article, index) => (
+
+                  <div
+                    className="alert-row"
+                    key={
+                      `${article.link || "news"}-${index}`
+                    }
+                  >
+
+                    <div>
+
+                      <strong>
+                        {
+                          article.title
+                        }
+                      </strong>
+
+                      <span>
+                        📍{" "}
+                        {
+                          article.state
+                        }
+
+                        {" • "}
+
+                        {
+                          article.category ||
+                          "General NER News"
+                        }
+                      </span>
+
+                      {article.published_at && (
+                        <small>
+                          Published:
+                          {" "}
+                          {new Date(
+                            article.published_at
+                          ).toLocaleString()}
+                        </small>
+                      )}
+
+                    </div>
+
+                    {article.link && (
+                      <a
+                        href={
+                          article.link
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Read News →
+                      </a>
+                    )}
+
+                  </div>
+
+                )
+              )}
+
+            </div>
+
+          )}
+
+        </section>
+
+        {/* =================================================
             WEATHER + SATELLITE
-        ============================================ */}
+        ================================================= */}
 
         <section className="two-column">
+
+          {/* WEATHER */}
 
           <div className="panel">
 
             <div className="panel-title">
+
               <div>
+
                 <h2>
                   Weather Intelligence
                 </h2>
@@ -1681,14 +1948,17 @@ function App() {
                 <p>
                   Open-Meteo
                 </p>
+
               </div>
+
             </div>
 
-
             {weather ? (
+
               <div className="data-grid">
 
                 <div>
+
                   <span>
                     Temperature
                   </span>
@@ -1698,9 +1968,11 @@ function App() {
                       weather.temperature_c
                     }°C
                   </strong>
+
                 </div>
 
                 <div>
+
                   <span>
                     Rain
                   </span>
@@ -1710,9 +1982,11 @@ function App() {
                       weather.rain_mm
                     } mm
                   </strong>
+
                 </div>
 
                 <div>
+
                   <span>
                     Wind
                   </span>
@@ -1722,9 +1996,11 @@ function App() {
                       weather.wind_kmh
                     } km/h
                   </strong>
+
                 </div>
 
                 <div>
+
                   <span>
                     Humidity
                   </span>
@@ -1734,23 +2010,30 @@ function App() {
                       weather.humidity
                     }%
                   </strong>
+
                 </div>
 
               </div>
+
             ) : (
+
               <div className="empty-state">
                 Analyze a route to
                 load weather.
               </div>
+
             )}
 
           </div>
 
+          {/* SATELLITE */}
 
           <div className="panel">
 
             <div className="panel-title">
+
               <div>
+
                 <h2>
                   Satellite Intelligence
                 </h2>
@@ -1758,14 +2041,17 @@ function App() {
                 <p>
                   Copernicus Sentinel-2
                 </p>
+
               </div>
+
             </div>
 
-
             {satellite?.available ? (
+
               <div className="data-grid">
 
                 <div>
+
                   <span>
                     Mean NDVI
                   </span>
@@ -1775,9 +2061,11 @@ function App() {
                       satellite.mean_ndvi
                     }
                   </strong>
+
                 </div>
 
                 <div>
+
                   <span>
                     Min NDVI
                   </span>
@@ -1787,9 +2075,11 @@ function App() {
                       satellite.min_ndvi
                     }
                   </strong>
+
                 </div>
 
                 <div>
+
                   <span>
                     Max NDVI
                   </span>
@@ -1799,31 +2089,40 @@ function App() {
                       satellite.max_ndvi
                     }
                   </strong>
+
                 </div>
 
               </div>
+
             ) : (
+
               <div className="empty-state">
-                {satellite?.message ||
-                  "Analyze a route to load satellite data."}
+
+                {
+                  satellite?.message ||
+                  "Analyze a route to load satellite data."
+                }
+
               </div>
+
             )}
 
           </div>
 
         </section>
 
-
-        {/* ===========================================
+        {/* =================================================
             ROUTE DECISION
-        ============================================ */}
+        ================================================= */}
 
         {route && (
+
           <section className="panel">
 
             <div className="panel-title">
 
               <div>
+
                 <h2>
                   Route Decision
                 </h2>
@@ -1832,6 +2131,7 @@ function App() {
                   Hazard-aware routing
                   result
                 </p>
+
               </div>
 
               <span
@@ -1841,17 +2141,19 @@ function App() {
                     : "safe-badge"
                 }
               >
-                {route.route_hazard_affected
-                  ? "Hazard affected"
-                  : "No verified route hazard"}
+                {
+                  route.route_hazard_affected
+                    ? "Hazard affected"
+                    : "No verified route hazard"
+                }
               </span>
 
             </div>
 
-
             <div className="route-decision">
 
               <div>
+
                 <strong>
                   {routeSelection}
                 </strong>
@@ -1863,10 +2165,11 @@ function App() {
                   geographic hazard
                   information.
                 </p>
+
               </div>
 
-
               <div>
+
                 <span>
                   Hazard Alerts
                 </span>
@@ -1877,10 +2180,11 @@ function App() {
                       ?.length || 0
                   }
                 </strong>
+
               </div>
 
-
               <div>
+
                 <span>
                   Alternate Routes
                 </span>
@@ -1890,32 +2194,39 @@ function App() {
                     routeCandidates.length
                   }
                 </strong>
+
               </div>
 
             </div>
 
           </section>
+
         )}
 
-
-        {/* ===========================================
+        {/* =================================================
             FLEET
-        ============================================ */}
+        ================================================= */}
 
         <section className="two-column">
+
+          {/* FLEET CONTROL */}
 
           <div className="panel">
 
             <div className="panel-title">
+
               <div>
+
                 <h2>
                   Fleet Control
                 </h2>
+
               </div>
+
             </div>
 
-
             <label>
+
               Active Vehicle
 
               <select
@@ -1931,12 +2242,14 @@ function App() {
                   )
                 }
               >
+
                 <option value="">
                   Select vehicle
                 </option>
 
                 {vehicles.map(
                   (vehicle) => (
+
                     <option
                       key={
                         vehicle.id
@@ -1949,24 +2262,37 @@ function App() {
                         vehicle.vehicle_number
                       }
                     </option>
+
                   )
                 )}
-              </select>
-            </label>
-            <DriverTracker
-  vehicleId={Number(selectedVehicleId)}
-  vehicleNumber={
-    vehicles.find(
-      (v) => Number(v.id) === Number(selectedVehicleId)
-    )?.vehicle_number || "NER-TRUCK-01"
-  }
-/>
 
+              </select>
+
+            </label>
+
+            <DriverTracker
+              vehicleId={
+                Number(
+                  selectedVehicleId
+                )
+              }
+              vehicleNumber={
+                vehicles.find(
+                  (v) =>
+                    Number(v.id) ===
+                    Number(
+                      selectedVehicleId
+                    )
+                )?.vehicle_number ||
+                "NER-TRUCK-01"
+              }
+            />
 
             <div className="vehicle-list">
 
               {vehicles.map(
                 (vehicle) => (
+
                   <div
                     className="vehicle-row"
                     key={
@@ -1975,6 +2301,7 @@ function App() {
                   >
 
                     <div>
+
                       <strong>
                         {
                           vehicle.vehicle_number
@@ -1986,6 +2313,7 @@ function App() {
                           vehicle.driver_name
                         }
                       </small>
+
                     </div>
 
                     <span>
@@ -1995,6 +2323,7 @@ function App() {
                     </span>
 
                   </div>
+
                 )
               )}
 
@@ -2002,11 +2331,14 @@ function App() {
 
           </div>
 
+          {/* LOGISTICS */}
 
           <div className="panel">
 
             <div className="panel-title">
+
               <div>
+
                 <h2>
                   Logistics Visibility
                 </h2>
@@ -2014,20 +2346,25 @@ function App() {
                 <p>
                   Shipment tracking
                 </p>
-              </div>
-            </div>
 
+              </div>
+
+            </div>
 
             {shipments.length ===
             0 ? (
+
               <div className="empty-state">
                 No shipments available.
               </div>
+
             ) : (
+
               <div className="shipment-list">
 
                 {shipments.map(
                   (shipment) => (
+
                     <div
                       className="shipment-row"
                       key={
@@ -2045,7 +2382,9 @@ function App() {
                         {
                           shipment.origin
                         }
+
                         {" → "}
+
                         {
                           shipment.destination
                         }
@@ -2058,48 +2397,57 @@ function App() {
                       </span>
 
                     </div>
+
                   )
                 )}
 
               </div>
+
             )}
 
           </div>
 
         </section>
 
-
-        {/* ===========================================
+        {/* =================================================
             SYSTEM ALERTS
-        ============================================ */}
+        ================================================= */}
 
         <section className="panel">
 
           <div className="panel-title">
+
             <div>
+
               <h2>
                 System Alerts
               </h2>
-            </div>
-          </div>
 
+            </div>
+
+          </div>
 
           {alerts.length ===
           0 ? (
+
             <div className="empty-state">
               No application alerts.
             </div>
+
           ) : (
+
             <div className="alert-list">
 
               {alerts.map(
                 (alert) => (
+
                   <div
                     className="alert-row"
                     key={
                       alert.id
                     }
                   >
+
                     <strong>
                       {
                         alert.title
@@ -2117,23 +2465,32 @@ function App() {
                         alert.severity
                       }
                     </b>
+
                   </div>
+
                 )
               )}
 
             </div>
+
           )}
 
         </section>
 
+        {/* =================================================
+            FOOTER
+        ================================================= */}
 
         <footer className="footer">
 
           <span>
-            Data sources: OpenStreetMap /
-            OSRM / Open-Meteo /
+            Data sources:
+            OpenStreetMap /
+            OSRM /
+            Open-Meteo /
             Copernicus Sentinel-2 /
-            NDMA SACHET
+            NDMA SACHET /
+            Google News RSS
           </span>
 
           <span>
@@ -2149,6 +2506,5 @@ function App() {
     </div>
   );
 }
-
 
 export default App;
