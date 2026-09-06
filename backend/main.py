@@ -60,7 +60,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://skcreator470-droid.github.io",
+        "https://r470-droid.github.io",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:5174",
@@ -1985,6 +1985,7 @@ def ner_news():
 
 from live_alerts import router as live_alert_router
 app.include_router(live_alert_router)
+
 
 
 
