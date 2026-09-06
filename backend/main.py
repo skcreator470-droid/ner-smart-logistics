@@ -1983,7 +1983,8 @@ def ner_news():
     }
 
 
-from backend.live_alerts import router as live_alert_router
+from live_alerts import router as live_alert_router
 app.include_router(live_alert_router)
+
 
 
