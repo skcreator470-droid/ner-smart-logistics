@@ -1279,8 +1279,13 @@ function App() {
                           )
                         }
                       >
-                        {item.name ||
-                          item.display_name}
+                        {(() => {
+                          const displayName = item.name || item.display_name || "";
+                          const district = item.district || item.city || "";
+                          const state = item.state || "";
+                          const meta = [district, state].filter(Boolean).join(", ");
+                          return meta ? `${displayName} — ${meta}` : displayName;
+                        })()}
                       </button>
                     )
                   )}
@@ -1338,8 +1343,13 @@ function App() {
                           )
                         }
                       >
-                        {item.name ||
-                          item.display_name}
+                        {(() => {
+                          const displayName = item.name || item.display_name || "";
+                          const district = item.district || item.city || "";
+                          const state = item.state || "";
+                          const meta = [district, state].filter(Boolean).join(", ");
+                          return meta ? `${displayName} — ${meta}` : displayName;
+                        })()}
                       </button>
                     )
                   )}
@@ -1879,7 +1889,7 @@ function App() {
                       </strong>
 
                       <span>
-                        📍{" "}
+                        📍 {" "}
                         {
                           article.state
                         }
