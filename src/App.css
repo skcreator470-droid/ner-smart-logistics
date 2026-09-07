@@ -29,6 +29,7 @@ body {
 
   background: #020914;
   color: #f4f8ff;
+
   overflow-x: hidden;
 }
 
@@ -78,8 +79,6 @@ button {
     );
 }
 
-/* subtle background glow */
-
 .auth-page::before {
   content: "";
   position: absolute;
@@ -107,9 +106,13 @@ button {
   width: min(1180px, 100%);
 
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
+
+  grid-template-columns:
+    1.05fr
+    0.95fr;
 
   gap: 55px;
+
   align-items: center;
 }
 
@@ -120,6 +123,7 @@ button {
 .brand-block {
   width: 100%;
   max-width: 590px;
+
   padding: 15px 0;
 }
 
@@ -144,6 +148,7 @@ button {
   border: 1px solid rgba(83, 195, 255, 0.65);
 
   color: white;
+
   font-size: 25px;
   font-weight: 900;
 
@@ -158,6 +163,7 @@ button {
   max-width: 580px;
 
   font-size: clamp(44px, 5.2vw, 72px);
+
   line-height: 0.98;
 
   letter-spacing: -2.5px;
@@ -179,6 +185,7 @@ button {
   color: #abc3df;
 
   font-size: 18px;
+
   line-height: 1.65;
 }
 
@@ -221,6 +228,7 @@ button {
   color: #ffffff;
 
   font-size: 34px;
+
   line-height: 1.1;
 
   font-weight: 900;
@@ -236,6 +244,7 @@ button {
   color: #8ea9c6;
 
   font-size: 14px;
+
   line-height: 1.55;
 }
 
@@ -247,7 +256,10 @@ button {
   width: 100%;
 
   display: grid;
-  grid-template-columns: 1fr 1fr;
+
+  grid-template-columns:
+    1fr
+    1fr;
 
   gap: 4px;
 
@@ -266,6 +278,7 @@ button {
   min-height: 54px;
 
   border: 0;
+
   border-radius: 13px;
 
   background: transparent;
@@ -273,6 +286,7 @@ button {
   color: #8ea7c3;
 
   font-size: 16px;
+
   font-weight: 800;
 
   transition:
@@ -311,11 +325,13 @@ button {
   color: #dce9f7;
 
   font-size: 14px;
+
   font-weight: 800;
 }
 
 .auth-form input {
   width: 100%;
+
   height: 58px;
 
   padding: 0 17px;
@@ -378,6 +394,7 @@ button {
   color: #ff9c9c;
 
   font-size: 14px;
+
   line-height: 1.45;
 }
 
@@ -387,9 +404,11 @@ button {
 
 .primary-btn {
   width: 100%;
+
   min-height: 58px;
 
   border: 0;
+
   border-radius: 15px;
 
   background:
@@ -402,6 +421,7 @@ button {
   color: white;
 
   font-size: 17px;
+
   font-weight: 900;
 
   box-shadow:
@@ -451,7 +471,9 @@ button {
   padding: 12px 28px;
 
   display: flex;
+
   align-items: center;
+
   justify-content: space-between;
 
   gap: 20px;
@@ -461,9 +483,11 @@ button {
   background: rgba(2, 12, 25, 0.92);
 
   backdrop-filter: blur(16px);
+
   -webkit-backdrop-filter: blur(16px);
 
   position: sticky;
+
   top: 0;
 
   z-index: 1000;
@@ -471,7 +495,9 @@ button {
 
 .user-area {
   display: flex;
+
   align-items: center;
+
   gap: 14px;
 }
 
@@ -495,11 +521,13 @@ button {
   color: #c7dcf2;
 
   font-size: 13px;
+
   font-weight: 700;
 }
 
 .logout-btn:hover {
   border-color: #188fff;
+
   color: #ffffff;
 }
 
@@ -547,11 +575,13 @@ button {
   color: #f2f7ff;
 
   font-size: 20px;
+
   font-weight: 850;
 }
 
 .panel-title small {
   color: #718da9;
+
   font-size: 12px;
 }
 
@@ -588,11 +618,13 @@ button {
   color: #b9cde3;
 
   font-size: 13px;
+
   font-weight: 700;
 }
 
 .search-field input {
   width: 100%;
+
   height: 48px;
 
   padding: 0 14px;
@@ -721,6 +753,7 @@ button {
 
 .leaflet-map {
   width: 100%;
+
   height: 440px;
 }
 
@@ -734,6 +767,7 @@ button {
   border-radius: 9px;
 
   font-size: 13px;
+
   font-weight: 750;
 }
 
@@ -765,6 +799,8 @@ button {
 
 /* =========================================================
    METRICS
+   FIXED:
+   Label / Value / Description now have clear spacing
    ========================================================= */
 
 .metrics-grid {
@@ -773,46 +809,85 @@ button {
   grid-template-columns:
     repeat(4, minmax(0, 1fr));
 
-  gap: 15px;
+  gap: 16px;
 
   margin-bottom: 22px;
 }
 
 .metric-card {
-  min-height: 125px;
+  min-width: 0;
+
+  min-height: 145px;
 
   padding: 20px;
 
-  border-radius: 16px;
+  border-radius: 18px;
 
   border: 1px solid rgba(55, 124, 184, 0.24);
 
   background:
     linear-gradient(
       145deg,
-      rgba(9, 31, 53, 0.88),
-      rgba(3, 16, 30, 0.88)
+      rgba(9, 31, 53, 0.90),
+      rgba(3, 16, 30, 0.90)
     );
+
+  display: flex;
+
+  flex-direction: column;
+
+  justify-content: flex-start;
+
+  gap: 10px;
+
+  overflow: hidden;
 }
 
 .metric-card .label {
-  color: #7694b2;
+  display: block;
 
-  font-size: 12px;
+  margin: 0;
+
+  color: #8faac5;
+
+  font-size: 13px;
+
+  line-height: 1.35;
 
   text-transform: uppercase;
 
-  letter-spacing: 0.8px;
+  letter-spacing: 0.7px;
+
+  font-weight: 750;
 }
 
 .metric-card .value {
-  margin-top: 9px;
+  display: block;
+
+  margin: 0;
 
   color: #f5f9ff;
 
-  font-size: 27px;
+  font-size: 28px;
+
+  line-height: 1.15;
 
   font-weight: 900;
+
+  overflow-wrap: anywhere;
+}
+
+.metric-card p,
+.metric-card small {
+  display: block;
+
+  margin: 0;
+
+  color: #7894af;
+
+  font-size: 12px;
+
+  line-height: 1.45;
 }
 
 /* =========================================================
@@ -843,6 +918,7 @@ button {
   display: flex;
 
   align-items: center;
+
   justify-content: space-between;
 
   gap: 12px;
@@ -1215,12 +1291,14 @@ button {
 
 .leaflet-container {
   background: #061525;
+
   font-family: inherit;
 }
 
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip {
   background: #071a2d;
+
   color: #eaf4ff;
 }
 
@@ -1230,7 +1308,9 @@ button {
 
 .leaflet-control-zoom a {
   background: #071a2d !important;
+
   color: #d9ecff !important;
+
   border-color: #1d4263 !important;
 }
 
@@ -1259,6 +1339,7 @@ button {
 
   .brand-block p {
     margin-left: auto;
+
     margin-right: auto;
   }
 
@@ -1271,6 +1352,8 @@ button {
   .metrics-grid {
     grid-template-columns:
       repeat(2, minmax(0, 1fr));
+
+    gap: 15px;
   }
 
   .search-grid {
@@ -1288,12 +1371,17 @@ button {
    ========================================================= */
 
 @media (max-width: 700px) {
+
+  /* ---------- LOGIN ---------- */
+
   .auth-page {
     min-height: 100dvh;
 
     padding: 14px;
 
     align-items: flex-start;
+
+    overflow-x: hidden;
   }
 
   .auth-card {
@@ -1320,6 +1408,7 @@ button {
 
   .brand-badge {
     width: 64px;
+
     height: 64px;
 
     border-radius: 17px;
@@ -1330,7 +1419,11 @@ button {
   .brand-block h1 {
     margin: 17px auto 11px;
 
-    font-size: clamp(32px, 10vw, 43px);
+    font-size: clamp(
+      32px,
+      10vw,
+      43px
+    );
 
     line-height: 1.02;
 
@@ -1339,6 +1432,10 @@ button {
 
   .brand-block p {
     max-width: 480px;
+
+    margin-left: auto;
+
+    margin-right: auto;
 
     font-size: 14px;
 
@@ -1391,7 +1488,7 @@ button {
     font-size: 16px;
   }
 
-  /* dashboard mobile */
+  /* ---------- DASHBOARD ---------- */
 
   .topbar {
     padding: 11px 14px;
@@ -1417,21 +1514,49 @@ button {
     border-radius: 15px;
   }
 
-  .metrics-grid {
-    grid-template-columns: 1fr 1fr;
+  /* ---------- METRICS ---------- */
 
-    gap: 10px;
+  .metrics-grid {
+    grid-template-columns:
+      1fr 1fr;
+
+    gap: 14px;
   }
 
   .metric-card {
-    min-height: 105px;
+    min-height: 155px;
 
-    padding: 15px;
+    padding: 18px 16px;
+
+    border-radius: 17px;
+
+    gap: 11px;
+  }
+
+  .metric-card .label {
+    font-size: 12px;
+
+    line-height: 1.4;
+
+    letter-spacing: 0.5px;
   }
 
   .metric-card .value {
-    font-size: 22px;
+    font-size: 25px;
+
+    line-height: 1.15;
+
+    margin-top: 2px;
   }
+
+  .metric-card p,
+  .metric-card small {
+    font-size: 12px;
+
+    line-height: 1.45;
+  }
+
+  /* ---------- OTHER DASHBOARD ---------- */
 
   .two-column {
     grid-template-columns: 1fr;
@@ -1477,6 +1602,9 @@ button {
    ========================================================= */
 
 @media (max-width: 400px) {
+
+  /* ---------- LOGIN ---------- */
+
   .auth-page {
     padding: 9px;
   }
@@ -1487,11 +1615,13 @@ button {
 
   .brand-block {
     padding-left: 5px;
+
     padding-right: 5px;
   }
 
   .brand-badge {
     width: 58px;
+
     height: 58px;
 
     font-size: 19px;
@@ -1542,6 +1672,39 @@ button {
 
     font-size: 15px;
   }
+
+  /* ---------- METRICS ---------- */
+
+  .metrics-grid {
+    gap: 11px;
+  }
+
+  .metric-card {
+    min-height: 150px;
+
+    padding: 16px 14px;
+
+    gap: 10px;
+  }
+
+  .metric-card .label {
+    font-size: 11px;
+
+    line-height: 1.4;
+  }
+
+  .metric-card .value {
+    font-size: 22px;
+
+    line-height: 1.15;
+  }
+
+  .metric-card p,
+  .metric-card small {
+    font-size: 11px;
+
+    line-height: 1.45;
+  }
 }
 
 /* =========================================================
@@ -1549,6 +1712,7 @@ button {
    ========================================================= */
 
 @media (max-width: 340px) {
+
   .auth-page {
     padding: 7px;
   }
@@ -1563,5 +1727,24 @@ button {
 
   .auth-tabs button {
     font-size: 12px;
+  }
+
+  .metric-card {
+    padding: 14px 12px;
+
+    min-height: 145px;
+  }
+
+  .metric-card .label {
+    font-size: 10px;
+  }
+
+  .metric-card .value {
+    font-size: 20px;
+  }
+
+  .metric-card p,
+  .metric-card small {
+    font-size: 10.5px;
   }
 }
