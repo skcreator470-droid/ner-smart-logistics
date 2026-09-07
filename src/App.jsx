@@ -21,7 +21,7 @@ import "./App.css";
 import DriverTracker from "./DriverTracker";
 
 // =====================================================
-// PRODUCTION BACKEND
+// PRODUCTION BACKEND — UNCHANGED
 // =====================================================
 
 const API_URL =
@@ -56,9 +56,7 @@ function MapController({ route }) {
       return;
     }
 
-    const bounds = L.latLngBounds(
-      route.geometry
-    );
+    const bounds = L.latLngBounds(route.geometry);
 
     map.fitBounds(bounds, {
       padding: [40, 40],
@@ -69,13 +67,83 @@ function MapController({ route }) {
 }
 
 // =====================================================
+// SMALL UI HELPERS
+// =====================================================
+
+function SectionHeader({
+  eyebrow,
+  title,
+  description,
+  action,
+}) {
+  return (
+    <div className="section-header">
+      <div>
+        {eyebrow && (
+          <span className="section-eyebrow">
+            {eyebrow}
+          </span>
+        )}
+
+        <h2>{title}</h2>
+
+        {description && (
+          <p>{description}</p>
+        )}
+      </div>
+
+      {action && (
+        <div className="section-action">
+          {action}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const value = String(status || "")
+    .toLowerCase();
+
+  let className = "status-badge";
+
+  if (
+    value.includes("high") ||
+    value.includes("critical") ||
+    value.includes("danger")
+  ) {
+    className += " status-danger";
+  } else if (
+    value.includes("medium") ||
+    value.includes("warning") ||
+    value.includes("delay")
+  ) {
+    className += " status-warning";
+  } else if (
+    value.includes("live") ||
+    value.includes("active") ||
+    value.includes("safe") ||
+    value.includes("delivered") ||
+    value.includes("completed")
+  ) {
+    className += " status-success";
+  }
+
+  return (
+    <span className={className}>
+      {status || "Unknown"}
+    </span>
+  );
+}
+
+// =====================================================
 // APP
 // =====================================================
 
 function App() {
-  // =====================================================
+  // ===================================================
   // AUTH
-  // =====================================================
+  // ===================================================
 
   const [authMode, setAuthMode] =
     useState("login");
@@ -96,9 +164,9 @@ function App() {
       password: "",
     });
 
-  // =====================================================
+  // ===================================================
   // ROUTE
-  // =====================================================
+  // ===================================================
 
   const [start, setStart] =
     useState("");
@@ -133,9 +201,9 @@ function App() {
   const [satellite, setSatellite] =
     useState(null);
 
-  // =====================================================
-  // REAL NER NEWS
-  // =====================================================
+  // ===================================================
+  // LIVE NER NEWS
+  // ===================================================
 
   const [nerNews, setNerNews] =
     useState([]);
@@ -146,9 +214,9 @@ function App() {
   const [routeError, setRouteError] =
     useState("");
 
-  // =====================================================
+  // ===================================================
   // HAZARDS
-  // =====================================================
+  // ===================================================
 
   const [hazards, setHazards] =
     useState([]);
@@ -162,9 +230,9 @@ function App() {
   const [hazardError, setHazardError] =
     useState("");
 
-  // =====================================================
+  // ===================================================
   // FLEET
-  // =====================================================
+  // ===================================================
 
   const [vehicles, setVehicles] =
     useState([]);
@@ -181,9 +249,9 @@ function App() {
   const watchIdRef =
     useRef(null);
 
-  // =====================================================
+  // ===================================================
   // LOGISTICS
-  // =====================================================
+  // ===================================================
 
   const [shipments, setShipments] =
     useState([]);
@@ -197,9 +265,9 @@ function App() {
   const [message, setMessage] =
     useState("");
 
-  // =====================================================
+  // ===================================================
   // AUTH CHECK
-  // =====================================================
+  // ===================================================
 
   useEffect(() => {
     checkAuth();
@@ -228,9 +296,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // LOGIN / SIGNUP
-  // =====================================================
+  // ===================================================
 
   async function submitAuth(event) {
     event.preventDefault();
@@ -293,9 +361,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // LOGOUT
-  // =====================================================
+  // ===================================================
 
   async function logout() {
     try {
@@ -314,9 +382,9 @@ function App() {
     setRoute(null);
   }
 
-  // =====================================================
+  // ===================================================
   // API HELPER
-  // =====================================================
+  // ===================================================
 
   async function apiFetch(
     path,
@@ -358,9 +426,9 @@ function App() {
     return data;
   }
 
-  // =====================================================
-  // LOAD DASHBOARD DATA
-  // =====================================================
+  // ===================================================
+  // DASHBOARD AUTO REFRESH
+  // ===================================================
 
   useEffect(() => {
     if (!user) {
@@ -376,9 +444,7 @@ function App() {
       );
 
     return () =>
-      clearInterval(
-        interval
-      );
+      clearInterval(interval);
   }, [user]);
 
   async function loadDashboard() {
@@ -398,9 +464,9 @@ function App() {
     }
   }
 
-  // =====================================================
-  // REAL NER NEWS / LIVE ALERTS
-  // =====================================================
+  // ===================================================
+  // LIVE NER NEWS
+  // ===================================================
 
   async function loadNerNews() {
     try {
@@ -463,9 +529,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // VEHICLES
-  // =====================================================
+  // ===================================================
 
   async function loadVehicles() {
     const data =
@@ -490,9 +556,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // SHIPMENTS
-  // =====================================================
+  // ===================================================
 
   async function loadShipments() {
     const data =
@@ -505,9 +571,9 @@ function App() {
     );
   }
 
-  // =====================================================
-  // SYSTEM ALERTS
-  // =====================================================
+  // ===================================================
+  // ALERTS
+  // ===================================================
 
   async function loadAlerts() {
     const data =
@@ -520,9 +586,9 @@ function App() {
     );
   }
 
-  // =====================================================
+  // ===================================================
   // HAZARDS
-  // =====================================================
+  // ===================================================
 
   async function loadHazards() {
     setHazardStatus(
@@ -570,9 +636,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // LOCATION SEARCH
-  // =====================================================
+  // ===================================================
 
   async function searchLocation(
     value,
@@ -581,7 +647,6 @@ function App() {
     const query =
       value.trim();
 
-    // Empty input
     if (!query) {
       if (type === "start") {
         setStartSuggestions([]);
@@ -592,7 +657,6 @@ function App() {
       return;
     }
 
-    // Search after at least 2 characters
     if (query.length < 2) {
       return;
     }
@@ -635,9 +699,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // SELECT LOCATION
-  // =====================================================
+  // ===================================================
 
   function selectLocation(
     item,
@@ -654,31 +718,25 @@ function App() {
       "";
 
     if (type === "start") {
-      setStart(
-        locationName
-      );
-
-      setStartCoords(
-        coords
-      );
-
+      setStart(locationName);
+      setStartCoords(coords);
       setStartSuggestions([]);
     } else {
       setDestination(
         locationName
       );
-
       setDestinationCoords(
         coords
       );
-
-      setDestinationSuggestions([]);
+      setDestinationSuggestions(
+        []
+      );
     }
   }
 
-  // =====================================================
+  // ===================================================
   // ENSURE COORDINATES
-  // =====================================================
+  // ===================================================
 
   async function ensureCoordinates(
     text,
@@ -710,9 +768,9 @@ function App() {
     };
   }
 
-  // =====================================================
+  // ===================================================
   // ROUTE ANALYSIS
-  // =====================================================
+  // ===================================================
 
   async function analyzeRoute() {
     setRouteError("");
@@ -808,9 +866,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // GPS TRACKING
-  // =====================================================
+  // ===================================================
 
   function startGpsTracking() {
     setGpsError("");
@@ -834,7 +892,8 @@ function App() {
     }
 
     if (
-      watchIdRef.current !== null
+      watchIdRef.current !==
+      null
     ) {
       return;
     }
@@ -904,9 +963,9 @@ function App() {
     setGpsTracking(true);
   }
 
-  // =====================================================
+  // ===================================================
   // STOP GPS
-  // =====================================================
+  // ===================================================
 
   function stopGpsTracking() {
     if (
@@ -924,9 +983,9 @@ function App() {
     setGpsTracking(false);
   }
 
-  // =====================================================
+  // ===================================================
   // EMERGENCY REROUTE
-  // =====================================================
+  // ===================================================
 
   async function emergencyReroute() {
     setMessage("");
@@ -1029,9 +1088,9 @@ function App() {
     }
   }
 
-  // =====================================================
+  // ===================================================
   // FLEET MARKERS
-  // =====================================================
+  // ===================================================
 
   const fleetMarkers =
     useMemo(
@@ -1046,38 +1105,45 @@ function App() {
       [vehicles]
     );
 
-  // =====================================================
+  // ===================================================
+  // DERIVED METRICS
+  // ===================================================
+
+  const activeVehicles =
+    vehicles.filter(
+      (vehicle) => {
+        const status =
+          String(
+            vehicle.status || ""
+          ).toLowerCase();
+
+        return (
+          status.includes("active") ||
+          status.includes("moving") ||
+          status.includes("running") ||
+          status.includes("online")
+        );
+      }
+    ).length;
+
+  const highHazards =
+    hazards.filter(
+      (hazard) =>
+        String(
+          hazard.severity || ""
+        ).toLowerCase() ===
+        "high"
+    ).length;
+
+  // ===================================================
   // AUTH LOADING
-  // =====================================================
+  // ===================================================
 
   if (authLoading) {
     return (
       <div className="auth-page">
         <div className="auth-card">
-          <h1>
-            NER Smart Logistics
-          </h1>
-
-          <p>
-            Loading secure session...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // =====================================================
-  // LOGIN / SIGNUP PAGE
-  // =====================================================
-
-  if (!user) {
-    return (
-      <div className="auth-page">
-
-        <div className="auth-card">
-
           <div className="brand-block">
-
             <span className="brand-badge">
               NER
             </span>
@@ -1087,169 +1153,261 @@ function App() {
             </h1>
 
             <p>
-              AI-Based Logistics &
-              Accessibility Intelligence
-              Platform
+              Loading secure
+              intelligence platform...
             </p>
-
           </div>
 
-          <div className="auth-tabs">
-
-            <button
-              className={
-                authMode === "login"
-                  ? "active"
-                  : ""
-              }
-              onClick={() => {
-                setAuthMode("login");
-                setAuthError("");
-              }}
-            >
-              Login
-            </button>
-
-            <button
-              className={
-                authMode === "signup"
-                  ? "active"
-                  : ""
-              }
-              onClick={() => {
-                setAuthMode("signup");
-                setAuthError("");
-              }}
-            >
-              Create Account
-            </button>
-
+          <div className="auth-loader">
+            <span />
+            <span />
+            <span />
           </div>
-
-          <form
-            className="auth-form"
-            onSubmit={
-              submitAuth
-            }
-          >
-
-            {authMode ===
-              "signup" && (
-              <label>
-                Full Name
-
-                <input
-                  value={
-                    authForm.name
-                  }
-                  onChange={(e) =>
-                    setAuthForm({
-                      ...authForm,
-
-                      name:
-                        e.target.value,
-                    })
-                  }
-                  placeholder="Your name"
-                  required
-                />
-              </label>
-            )}
-
-            <label>
-              Email
-
-              <input
-                type="email"
-                value={
-                  authForm.email
-                }
-                onChange={(e) =>
-                  setAuthForm({
-                    ...authForm,
-
-                    email:
-                      e.target.value,
-                  })
-                }
-                placeholder="you@example.com"
-                required
-              />
-            </label>
-
-            <label>
-              Password
-
-              <input
-                type="password"
-                value={
-                  authForm.password
-                }
-                onChange={(e) =>
-                  setAuthForm({
-                    ...authForm,
-
-                    password:
-                      e.target.value,
-                  })
-                }
-                placeholder="Minimum 6 characters"
-                required
-              />
-            </label>
-
-            {authError && (
-              <div className="error-box">
-                {authError}
-              </div>
-            )}
-
-            <button
-              className="primary-btn"
-              type="submit"
-            >
-              {authMode ===
-              "login"
-                ? "Login"
-                : "Create Account"}
-            </button>
-
-          </form>
-
         </div>
-
       </div>
     );
   }
 
-  // =====================================================
+  // ===================================================
+  // LOGIN / SIGNUP
+  // ===================================================
+
+  if (!user) {
+    return (
+      <div className="auth-page">
+        <div className="auth-visual">
+          <div className="auth-visual-content">
+            <span className="hero-kicker">
+              NORTH EASTERN REGION
+            </span>
+
+            <h1>
+              Intelligent
+              <br />
+              Logistics
+              <br />
+              Infrastructure
+            </h1>
+
+            <p>
+              Real-time route intelligence,
+              vehicle visibility, weather,
+              hazards and logistics decision
+              support for the North Eastern
+              Region.
+            </p>
+
+            <div className="auth-feature-grid">
+              <div>
+                <strong>
+                  LIVE
+                </strong>
+                <span>
+                  Fleet Intelligence
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  AI
+                </strong>
+                <span>
+                  Route Risk Analysis
+                </span>
+              </div>
+
+              <div>
+                <strong>
+                  8
+                </strong>
+                <span>
+                  NER States
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="auth-side">
+          <div className="auth-card">
+            <div className="brand-block">
+              <span className="brand-badge">
+                NER
+              </span>
+
+              <h1>
+                Smart Logistics
+              </h1>
+
+              <p>
+                AI-Based Logistics &
+                Accessibility Intelligence
+                Platform
+              </p>
+            </div>
+
+            <div className="auth-tabs">
+              <button
+                className={
+                  authMode === "login"
+                    ? "active"
+                    : ""
+                }
+                onClick={() => {
+                  setAuthMode("login");
+                  setAuthError("");
+                }}
+              >
+                Login
+              </button>
+
+              <button
+                className={
+                  authMode === "signup"
+                    ? "active"
+                    : ""
+                }
+                onClick={() => {
+                  setAuthMode("signup");
+                  setAuthError("");
+                }}
+              >
+                Create Account
+              </button>
+            </div>
+
+            <form
+              className="auth-form"
+              onSubmit={
+                submitAuth
+              }
+            >
+              {authMode ===
+                "signup" && (
+                <label>
+                  Full Name
+
+                  <input
+                    value={
+                      authForm.name
+                    }
+                    onChange={(e) =>
+                      setAuthForm({
+                        ...authForm,
+                        name:
+                          e.target.value,
+                      })
+                    }
+                    placeholder="Your name"
+                    required
+                  />
+                </label>
+              )}
+
+              <label>
+                Email
+
+                <input
+                  type="email"
+                  value={
+                    authForm.email
+                  }
+                  onChange={(e) =>
+                    setAuthForm({
+                      ...authForm,
+                      email:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="you@example.com"
+                  required
+                />
+              </label>
+
+              <label>
+                Password
+
+                <input
+                  type="password"
+                  value={
+                    authForm.password
+                  }
+                  onChange={(e) =>
+                    setAuthForm({
+                      ...authForm,
+                      password:
+                        e.target.value,
+                    })
+                  }
+                  placeholder="Minimum 6 characters"
+                  required
+                />
+              </label>
+
+              {authError && (
+                <div className="error-box">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                className="primary-btn auth-submit"
+                type="submit"
+              >
+                {authMode ===
+                "login"
+                  ? "Enter Dashboard"
+                  : "Create Account"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===================================================
   // DASHBOARD
-  // =====================================================
+  // ===================================================
 
   return (
     <div className="app-shell">
 
       {/* =================================================
-          TOP BAR
+          TOP NAVIGATION
       ================================================= */}
 
       <header className="topbar">
 
-        <div>
-          <h1>
-            NER Smart Logistics
-          </h1>
+        <div className="topbar-brand">
 
-          <span>
-            North Eastern Region
-            Intelligence Platform
-          </span>
+          <div className="brand-mark">
+            N
+          </div>
+
+          <div>
+            <h1>
+              NER Smart Logistics
+            </h1>
+
+            <span>
+              Intelligence &
+              Accessibility Platform
+            </span>
+          </div>
+
         </div>
 
-        <div className="user-area">
+        <div className="topbar-right">
+
+          <div className="system-live">
+            <span className="live-dot" />
+            <span>
+              SYSTEM LIVE
+            </span>
+          </div>
 
           <div className="user-info">
-
             <strong>
               {user.name}
             </strong>
@@ -1257,7 +1415,6 @@ function App() {
             <small>
               {user.email}
             </small>
-
           </div>
 
           <button
@@ -1274,34 +1431,134 @@ function App() {
       <main className="dashboard">
 
         {/* =================================================
+            WELCOME / OVERVIEW
+        ================================================= */}
+
+        <section className="dashboard-hero">
+
+          <div>
+            <span className="section-eyebrow">
+              OPERATIONS CENTER
+            </span>
+
+            <h2>
+              North Eastern Region
+              <br />
+              Logistics Command
+            </h2>
+
+            <p>
+              Monitor routes, fleet,
+              hazards and logistics
+              intelligence from one
+              operational dashboard.
+            </p>
+          </div>
+
+          <div className="hero-status-card">
+
+            <span>
+              DATA REFRESH
+            </span>
+
+            <strong>
+              15 sec
+            </strong>
+
+            <small>
+              Automated live synchronization
+            </small>
+
+          </div>
+
+        </section>
+
+        {/* =================================================
+            KPI STRIP
+        ================================================= */}
+
+        <section className="metrics-grid">
+
+          <div className="metric-card">
+            <span>
+              ROUTE DISTANCE
+            </span>
+
+            <strong>
+              {route
+                ? `${route.distance_km} km`
+                : "--"}
+            </strong>
+
+            <small>
+              Current analyzed route
+            </small>
+          </div>
+
+          <div className="metric-card">
+            <span>
+              ESTIMATED ETA
+            </span>
+
+            <strong>
+              {route
+                ? `${route.duration_minutes} min`
+                : "--"}
+            </strong>
+
+            <small>
+              Route travel duration
+            </small>
+          </div>
+
+          <div className="metric-card">
+            <span>
+              LIVE VEHICLES
+            </span>
+
+            <strong>
+              {vehicles.length}
+            </strong>
+
+            <small>
+              {activeVehicles} active
+            </small>
+          </div>
+
+          <div className="metric-card">
+            <span>
+              ACTIVE HAZARDS
+            </span>
+
+            <strong>
+              {hazards.length}
+            </strong>
+
+            <small>
+              {highHazards} high severity
+            </small>
+          </div>
+
+        </section>
+
+        {/* =================================================
             ROUTE PLANNER
         ================================================= */}
 
         <section className="panel route-panel">
 
-          <div className="panel-title">
-
-            <div>
-              <h2>
-                Smart Route Planner
-              </h2>
-
-              <p>
-                Road route + weather +
-                satellite + live hazards
-              </p>
-            </div>
-
-          </div>
+          <SectionHeader
+            eyebrow="INTELLIGENT ROUTING"
+            title="Smart Route Planner"
+            description="Analyze road geometry, weather, satellite intelligence and verified hazard information."
+          />
 
           <div className="search-grid">
-
-            {/* START */}
 
             <div className="search-field">
 
               <label>
-                Start
+                START LOCATION
               </label>
 
               <input
@@ -1311,10 +1568,7 @@ function App() {
                     e.target.value;
 
                   setStart(value);
-
-                  setStartCoords(
-                    null
-                  );
+                  setStartCoords(null);
 
                   searchLocation(
                     value,
@@ -1329,7 +1583,10 @@ function App() {
                 <div className="suggestions">
 
                   {startSuggestions.map(
-                    (item, index) => (
+                    (
+                      item,
+                      index
+                    ) => (
                       <button
                         type="button"
                         key={index}
@@ -1355,17 +1612,14 @@ function App() {
                             item.state ||
                             "";
 
-                          const meta =
-                            [
-                              district,
-                              state,
-                            ]
-                              .filter(
-                                Boolean
-                              )
-                              .join(
-                                ", "
-                              );
+                          const meta = [
+                            district,
+                            state,
+                          ]
+                            .filter(
+                              Boolean
+                            )
+                            .join(", ");
 
                           return meta
                             ? `${displayName} — ${meta}`
@@ -1380,12 +1634,14 @@ function App() {
 
             </div>
 
-            {/* DESTINATION */}
+            <div className="route-connector">
+              <span />
+            </div>
 
             <div className="search-field">
 
               <label>
-                Destination
+                DESTINATION
               </label>
 
               <input
@@ -1417,7 +1673,10 @@ function App() {
                 <div className="suggestions">
 
                   {destinationSuggestions.map(
-                    (item, index) => (
+                    (
+                      item,
+                      index
+                    ) => (
                       <button
                         type="button"
                         key={index}
@@ -1443,17 +1702,14 @@ function App() {
                             item.state ||
                             "";
 
-                          const meta =
-                            [
-                              district,
-                              state,
-                            ]
-                              .filter(
-                                Boolean
-                              )
-                              .join(
-                                ", "
-                              );
+                          const meta = [
+                            district,
+                            state,
+                          ]
+                            .filter(
+                              Boolean
+                            )
+                            .join(", ");
 
                           return meta
                             ? `${displayName} — ${meta}`
@@ -1468,8 +1724,6 @@ function App() {
 
             </div>
 
-            {/* ANALYZE */}
-
             <button
               className="primary-btn route-btn"
               onClick={
@@ -1480,8 +1734,8 @@ function App() {
               }
             >
               {routeLoading
-                ? "Analyzing..."
-                : "Analyze Route"}
+                ? "Analyzing Route..."
+                : "Analyze Route →"}
             </button>
 
           </div>
@@ -1501,61 +1755,52 @@ function App() {
         </section>
 
         {/* =================================================
-            MAP
+            LIVE MAP
         ================================================= */}
 
         <section className="panel map-panel">
 
-          <div className="panel-title">
+          <SectionHeader
+            eyebrow="GEOSPATIAL OPERATIONS"
+            title="Live Logistics Map"
+            description="Real road geometry, fleet GPS positions and route analysis."
+            action={
+              <div className="map-actions">
 
-            <div>
-              <h2>
-                Live Logistics Map
-              </h2>
+                <button
+                  className={
+                    gpsTracking
+                      ? "danger-btn"
+                      : "secondary-btn"
+                  }
+                  onClick={
+                    gpsTracking
+                      ? stopGpsTracking
+                      : startGpsTracking
+                  }
+                >
+                  {gpsTracking
+                    ? "Stop GPS"
+                    : "Start GPS"}
+                </button>
 
-              <p>
-                Real road geometry,
-                vehicle GPS and
-                route analysis
-              </p>
-            </div>
+                <button
+                  className="danger-btn"
+                  onClick={
+                    emergencyReroute
+                  }
+                  disabled={
+                    rerouteLoading
+                  }
+                >
+                  {rerouteLoading
+                    ? "Rerouting..."
+                    : "Emergency Reroute"}
+                </button>
 
-            <div className="map-actions">
-
-              <button
-                className={
-                  gpsTracking
-                    ? "danger-btn"
-                    : "secondary-btn"
-                }
-                onClick={
-                  gpsTracking
-                    ? stopGpsTracking
-                    : startGpsTracking
-                }
-              >
-                {gpsTracking
-                  ? "Stop GPS Tracking"
-                  : "Start GPS Tracking"}
-              </button>
-
-              <button
-                className="danger-btn"
-                onClick={
-                  emergencyReroute
-                }
-                disabled={
-                  rerouteLoading
-                }
-              >
-                {rerouteLoading
-                  ? "Rerouting..."
-                  : "Emergency Reroute"}
-              </button>
-
-            </div>
-
-          </div>
+              </div>
+            }
+          />
 
           {gpsError && (
             <div className="error-box">
@@ -1632,7 +1877,6 @@ function App() {
                       </Popup>
                     </Marker>
                   )}
-
                 </>
               )}
 
@@ -1647,7 +1891,6 @@ function App() {
                       vehicle.lon,
                     ]}
                   >
-
                     <Popup>
 
                       <strong>
@@ -1658,163 +1901,84 @@ function App() {
 
                       <br />
 
-                      Driver:
-                      {" "}
+                      Driver:{" "}
                       {
                         vehicle.driver_name
                       }
 
                       <br />
 
-                      Status:
-                      {" "}
+                      Status:{" "}
                       {
                         vehicle.status
                       }
 
                       <br />
 
-                      GPS:
-                      {" "}
+                      GPS:{" "}
                       {Number(
                         vehicle.lat
                       ).toFixed(5)}
-                      ,
-                      {" "}
+                      ,{" "}
                       {Number(
                         vehicle.lon
                       ).toFixed(5)}
 
                     </Popup>
-
                   </Marker>
                 )
               )}
 
             </MapContainer>
 
-          </div>
-
-        </section>
-
-        {/* =================================================
-            METRICS
-        ================================================= */}
-
-        <section className="metrics-grid">
-
-          <div className="metric-card">
-
-            <span>
-              Route Distance
-            </span>
-
-            <strong>
-              {route
-                ? `${route.distance_km} km`
-                : "--"}
-            </strong>
-
-          </div>
-
-          <div className="metric-card">
-
-            <span>
-              ETA
-            </span>
-
-            <strong>
-              {route
-                ? `${route.duration_minutes} min`
-                : "--"}
-            </strong>
-
-          </div>
-
-          <div className="metric-card">
-
-            <span>
-              Route Risk
-            </span>
-
-            <strong
-              className={
-                route?.risk_level ===
-                "High"
-                  ? "risk-high"
-                  : route?.risk_level ===
-                    "Medium"
-                  ? "risk-medium"
-                  : "risk-low"
-              }
-            >
-              {route
-                ? `${route.risk_score} · ${route.risk_level}`
-                : "--"}
-            </strong>
-
-          </div>
-
-          <div className="metric-card">
-
-            <span>
-              Live Vehicles
-            </span>
-
-            <strong>
-              {vehicles.length}
-            </strong>
+            <div className="map-overlay-status">
+              <span className="live-dot" />
+              LIVE GPS
+              <strong>
+                {fleetMarkers.length}
+              </strong>
+            </div>
 
           </div>
 
         </section>
 
         {/* =================================================
-            LIVE HAZARDS
+            HAZARD MONITOR
         ================================================= */}
 
         <section className="panel hazard-panel">
 
-          <div className="panel-title">
+          <SectionHeader
+            eyebrow="DISASTER INTELLIGENCE"
+            title="Live Hazard Monitor"
+            description="Official NDMA SACHET multi-hazard information."
+            action={
+              <div className="hazard-status">
 
-            <div>
+                <span
+                  className={
+                    hazardStatus ===
+                    "LIVE"
+                      ? "live-dot"
+                      : "status-dot"
+                  }
+                />
 
-              <h2>
-                Live Hazard Monitor
-              </h2>
+                {hazardStatus}
 
-              <p>
-                Official NDMA SACHET
-                multi-hazard feed
-              </p>
+                <button
+                  className="small-btn"
+                  onClick={
+                    loadHazards
+                  }
+                >
+                  Refresh
+                </button>
 
-            </div>
-
-            <div className="hazard-status">
-
-              <span
-                className={
-                  hazardStatus ===
-                  "LIVE"
-                    ? "live-dot"
-                    : "status-dot"
-                }
-              />
-
-              {hazardStatus}
-
-              <button
-                className="small-btn"
-                onClick={
-                  loadHazards
-                }
-              >
-                Refresh
-              </button>
-
-            </div>
-
-          </div>
+              </div>
+            }
+          />
 
           {hazardError && (
             <div className="warning-box">
@@ -1822,10 +1986,12 @@ function App() {
             </div>
           )}
 
-          {hazards.length ===
-          0 ? (
-
+          {hazards.length === 0 ? (
             <div className="empty-state">
+
+              <div className="empty-icon">
+                ✓
+              </div>
 
               <strong>
                 No active SACHET
@@ -1841,14 +2007,14 @@ function App() {
               </span>
 
             </div>
-
           ) : (
-
             <div className="hazard-list">
 
               {hazards.map(
-                (hazard, index) => (
-
+                (
+                  hazard,
+                  index
+                ) => (
                   <div
                     className="hazard-card"
                     key={
@@ -1881,25 +2047,24 @@ function App() {
 
                     <div className="hazard-meta">
 
-                      <span>
-                        Severity:
-                        {" "}
-                        {
+                      <StatusBadge
+                        status={
                           hazard.severity ||
                           "Unknown"
                         }
-                      </span>
+                      />
 
                       <span>
-                        Area:
-                        {" "}
+                        Area:{" "}
                         {
                           hazard.areas
                             ?.map(
                               (a) =>
                                 a.area_desc
                             )
-                            .filter(Boolean)
+                            .filter(
+                              Boolean
+                            )
                             .join(
                               ", "
                             ) ||
@@ -1910,19 +2075,15 @@ function App() {
                     </div>
 
                   </div>
-
                 )
               )}
 
             </div>
-
           )}
 
           {hazardUpdated && (
             <small className="muted">
-              Last successful feed
-              update:
-              {" "}
+              Last successful feed update:{" "}
               {new Date(
                 hazardUpdated
               ).toLocaleString()}
@@ -1932,35 +2093,242 @@ function App() {
         </section>
 
         {/* =================================================
-            REAL NER NEWS
+            ROUTE DECISION
+        ================================================= */}
+
+        {route && (
+          <section className="panel">
+
+            <SectionHeader
+              eyebrow="AI DECISION SUPPORT"
+              title="Route Decision"
+              description="Hazard-aware routing result."
+              action={
+                <span
+                  className={
+                    route.route_hazard_affected
+                      ? "danger-badge"
+                      : "safe-badge"
+                  }
+                >
+                  {route.route_hazard_affected
+                    ? "Hazard affected"
+                    : "No verified route hazard"}
+                </span>
+              }
+            />
+
+            <div className="route-decision">
+
+              <div className="decision-main">
+
+                <span>
+                  SELECTED ROUTE
+                </span>
+
+                <strong>
+                  {routeSelection}
+                </strong>
+
+                <p>
+                  The system evaluates
+                  OSRM route candidates
+                  against available
+                  geographic hazard
+                  information.
+                </p>
+
+              </div>
+
+              <div className="decision-stat">
+                <span>
+                  HAZARD ALERTS
+                </span>
+
+                <strong>
+                  {
+                    route.hazard_alerts
+                      ?.length || 0
+                  }
+                </strong>
+              </div>
+
+              <div className="decision-stat">
+                <span>
+                  ALTERNATE ROUTES
+                </span>
+
+                <strong>
+                  {
+                    routeCandidates.length
+                  }
+                </strong>
+              </div>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* =================================================
+            WEATHER + SATELLITE
+        ================================================= */}
+
+        <section className="two-column">
+
+          <div className="panel">
+
+            <SectionHeader
+              eyebrow="ENVIRONMENTAL DATA"
+              title="Weather Intelligence"
+              description="Open-Meteo"
+            />
+
+            {weather ? (
+              <div className="data-grid">
+
+                <div>
+                  <span>
+                    Temperature
+                  </span>
+
+                  <strong>
+                    {
+                      weather.temperature_c
+                    }°C
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Rain
+                  </span>
+
+                  <strong>
+                    {
+                      weather.rain_mm
+                    } mm
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Wind
+                  </span>
+
+                  <strong>
+                    {
+                      weather.wind_kmh
+                    } km/h
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Humidity
+                  </span>
+
+                  <strong>
+                    {
+                      weather.humidity
+                    }%
+                  </strong>
+                </div>
+
+              </div>
+            ) : (
+              <div className="empty-state">
+                Analyze a route to
+                load weather.
+              </div>
+            )}
+
+          </div>
+
+          <div className="panel">
+
+            <SectionHeader
+              eyebrow="EARTH OBSERVATION"
+              title="Satellite Intelligence"
+              description="Copernicus Sentinel-2"
+            />
+
+            {satellite?.available ? (
+              <div className="data-grid">
+
+                <div>
+                  <span>
+                    Mean NDVI
+                  </span>
+
+                  <strong>
+                    {
+                      satellite.mean_ndvi
+                    }
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Min NDVI
+                  </span>
+
+                  <strong>
+                    {
+                      satellite.min_ndvi
+                    }
+                  </strong>
+                </div>
+
+                <div>
+                  <span>
+                    Max NDVI
+                  </span>
+
+                  <strong>
+                    {
+                      satellite.max_ndvi
+                    }
+                  </strong>
+                </div>
+
+              </div>
+            ) : (
+              <div className="empty-state">
+                {
+                  satellite?.message ||
+                  "Analyze a route to load satellite data."
+                }
+              </div>
+            )}
+
+          </div>
+
+        </section>
+
+        {/* =================================================
+            LIVE NER NEWS
         ================================================= */}
 
         <section className="panel">
 
-          <div className="panel-title">
-
-            <div>
-
-              <h2>
-                📰 Live NER News
-              </h2>
-
-              <p>
-                Real-time news feed for
-                the 8 North Eastern states
-              </p>
-
-            </div>
-
-            <span className="safe-badge">
-              LIVE
-            </span>
-
-          </div>
+          <SectionHeader
+            eyebrow="REGIONAL INTELLIGENCE"
+            title="Live NER News"
+            description="Verified live alerts and information for the eight North Eastern states."
+            action={
+              <span className="safe-badge">
+                LIVE
+              </span>
+            }
+          />
 
           {nerNews.length === 0 ? (
-
             <div className="empty-state">
+
+              <div className="empty-icon">
+                —
+              </div>
 
               <strong>
                 No current verified
@@ -1974,22 +2342,25 @@ function App() {
               </span>
 
             </div>
-
           ) : (
-
             <div className="alert-list">
 
               {nerNews.map(
-                (article, index) => (
-
+                (
+                  article,
+                  index
+                ) => (
                   <div
                     className="alert-row"
                     key={
-                      `${article.link || "news"}-${index}`
+                      `${
+                        article.link ||
+                        "news"
+                      }-${index}`
                     }
                   >
 
-                    <div>
+                    <div className="alert-content">
 
                       <strong>
                         {
@@ -2014,8 +2385,7 @@ function App() {
 
                       {article.published_at && (
                         <small>
-                          Published:
-                          {" "}
+                          Published:{" "}
                           {new Date(
                             article.published_at
                           ).toLocaleString()}
@@ -2037,317 +2407,33 @@ function App() {
                     )}
 
                   </div>
-
                 )
               )}
 
             </div>
-
           )}
 
         </section>
 
         {/* =================================================
-            WEATHER + SATELLITE
+            FLEET + LOGISTICS
         ================================================= */}
 
         <section className="two-column">
 
-          {/* WEATHER */}
+          {/* FLEET */}
 
           <div className="panel">
 
-            <div className="panel-title">
-
-              <div>
-
-                <h2>
-                  Weather Intelligence
-                </h2>
-
-                <p>
-                  Open-Meteo
-                </p>
-
-              </div>
-
-            </div>
-
-            {weather ? (
-
-              <div className="data-grid">
-
-                <div>
-
-                  <span>
-                    Temperature
-                  </span>
-
-                  <strong>
-                    {
-                      weather.temperature_c
-                    }°C
-                  </strong>
-
-                </div>
-
-                <div>
-
-                  <span>
-                    Rain
-                  </span>
-
-                  <strong>
-                    {
-                      weather.rain_mm
-                    } mm
-                  </strong>
-
-                </div>
-
-                <div>
-
-                  <span>
-                    Wind
-                  </span>
-
-                  <strong>
-                    {
-                      weather.wind_kmh
-                    } km/h
-                  </strong>
-
-                </div>
-
-                <div>
-
-                  <span>
-                    Humidity
-                  </span>
-
-                  <strong>
-                    {
-                      weather.humidity
-                    }%
-                  </strong>
-
-                </div>
-
-              </div>
-
-            ) : (
-
-              <div className="empty-state">
-                Analyze a route to
-                load weather.
-              </div>
-
-            )}
-
-          </div>
-
-          {/* SATELLITE */}
-
-          <div className="panel">
-
-            <div className="panel-title">
-
-              <div>
-
-                <h2>
-                  Satellite Intelligence
-                </h2>
-
-                <p>
-                  Copernicus Sentinel-2
-                </p>
-
-              </div>
-
-            </div>
-
-            {satellite?.available ? (
-
-              <div className="data-grid">
-
-                <div>
-
-                  <span>
-                    Mean NDVI
-                  </span>
-
-                  <strong>
-                    {
-                      satellite.mean_ndvi
-                    }
-                  </strong>
-
-                </div>
-
-                <div>
-
-                  <span>
-                    Min NDVI
-                  </span>
-
-                  <strong>
-                    {
-                      satellite.min_ndvi
-                    }
-                  </strong>
-
-                </div>
-
-                <div>
-
-                  <span>
-                    Max NDVI
-                  </span>
-
-                  <strong>
-                    {
-                      satellite.max_ndvi
-                    }
-                  </strong>
-
-                </div>
-
-              </div>
-
-            ) : (
-
-              <div className="empty-state">
-
-                {
-                  satellite?.message ||
-                  "Analyze a route to load satellite data."
-                }
-
-              </div>
-
-            )}
-
-          </div>
-
-        </section>
-
-        {/* =================================================
-            ROUTE DECISION
-        ================================================= */}
-
-        {route && (
-
-          <section className="panel">
-
-            <div className="panel-title">
-
-              <div>
-
-                <h2>
-                  Route Decision
-                </h2>
-
-                <p>
-                  Hazard-aware routing
-                  result
-                </p>
-
-              </div>
-
-              <span
-                className={
-                  route.route_hazard_affected
-                    ? "danger-badge"
-                    : "safe-badge"
-                }
-              >
-                {
-                  route.route_hazard_affected
-                    ? "Hazard affected"
-                    : "No verified route hazard"
-                }
-              </span>
-
-            </div>
-
-            <div className="route-decision">
-
-              <div>
-
-                <strong>
-                  {routeSelection}
-                </strong>
-
-                <p>
-                  The system evaluates
-                  OSRM route candidates
-                  against available
-                  geographic hazard
-                  information.
-                </p>
-
-              </div>
-
-              <div>
-
-                <span>
-                  Hazard Alerts
-                </span>
-
-                <strong>
-                  {
-                    route.hazard_alerts
-                      ?.length || 0
-                  }
-                </strong>
-
-              </div>
-
-              <div>
-
-                <span>
-                  Alternate Routes
-                </span>
-
-                <strong>
-                  {
-                    routeCandidates.length
-                  }
-                </strong>
-
-              </div>
-
-            </div>
-
-          </section>
-
-        )}
-
-        {/* =================================================
-            FLEET
-        ================================================= */}
-
-        <section className="two-column">
-
-          {/* FLEET CONTROL */}
-
-          <div className="panel">
-
-            <div className="panel-title">
-
-              <div>
-
-                <h2>
-                  Fleet Control
-                </h2>
-
-              </div>
-
-            </div>
-
-            <label>
-
-              Active Vehicle
+            <SectionHeader
+              eyebrow="VEHICLE OPERATIONS"
+              title="Fleet Control"
+              description="Manage the active vehicle and driver tracking."
+            />
+
+            <label className="select-label">
+
+              ACTIVE VEHICLE
 
               <select
                 value={
@@ -2369,7 +2455,6 @@ function App() {
 
                 {vehicles.map(
                   (vehicle) => (
-
                     <option
                       key={
                         vehicle.id
@@ -2382,7 +2467,6 @@ function App() {
                         vehicle.vehicle_number
                       }
                     </option>
-
                   )
                 )}
 
@@ -2412,9 +2496,17 @@ function App() {
 
               {vehicles.map(
                 (vehicle) => (
-
                   <div
-                    className="vehicle-row"
+                    className={
+                      Number(
+                        selectedVehicleId
+                      ) ===
+                      Number(
+                        vehicle.id
+                      )
+                        ? "vehicle-row selected"
+                        : "vehicle-row"
+                    }
                     key={
                       vehicle.id
                     }
@@ -2436,14 +2528,13 @@ function App() {
 
                     </div>
 
-                    <span>
-                      {
+                    <StatusBadge
+                      status={
                         vehicle.status
                       }
-                    </span>
+                    />
 
                   </div>
-
                 )
               )}
 
@@ -2455,36 +2546,22 @@ function App() {
 
           <div className="panel">
 
-            <div className="panel-title">
-
-              <div>
-
-                <h2>
-                  Logistics Visibility
-                </h2>
-
-                <p>
-                  Shipment tracking
-                </p>
-
-              </div>
-
-            </div>
+            <SectionHeader
+              eyebrow="SUPPLY CHAIN"
+              title="Logistics Visibility"
+              description="Live shipment tracking and delivery visibility."
+            />
 
             {shipments.length ===
             0 ? (
-
               <div className="empty-state">
                 No shipments available.
               </div>
-
             ) : (
-
               <div className="shipment-list">
 
                 {shipments.map(
                   (shipment) => (
-
                     <div
                       className="shipment-row"
                       key={
@@ -2492,11 +2569,19 @@ function App() {
                       }
                     >
 
-                      <strong>
-                        {
-                          shipment.tracking_id
-                        }
-                      </strong>
+                      <div>
+
+                        <strong>
+                          {
+                            shipment.tracking_id
+                          }
+                        </strong>
+
+                        <small>
+                          Tracking ID
+                        </small>
+
+                      </div>
 
                       <span>
                         {
@@ -2510,18 +2595,17 @@ function App() {
                         }
                       </span>
 
-                      <span>
-                        {
+                      <StatusBadge
+                        status={
                           shipment.status
                         }
-                      </span>
+                      />
 
                     </div>
                   )
                 )}
 
               </div>
-
             )}
 
           </div>
@@ -2534,32 +2618,36 @@ function App() {
 
         <section className="panel">
 
-          <div className="panel-title">
-
-            <div>
-
-              <h2>
-                System Alerts
-              </h2>
-
-            </div>
-
-          </div>
+          <SectionHeader
+            eyebrow="PLATFORM MONITORING"
+            title="System Alerts"
+            description="Application-level operational alerts from the connected backend."
+          />
 
           {alerts.length ===
           0 ? (
-
             <div className="empty-state">
-              No application alerts.
+
+              <div className="empty-icon">
+                ✓
+              </div>
+
+              <strong>
+                No application alerts.
+              </strong>
+
+              <span>
+                The connected system
+                currently returned
+                no application alerts.
+              </span>
+
             </div>
-
           ) : (
-
             <div className="alert-list">
 
               {alerts.map(
                 (alert) => (
-
                   <div
                     className="alert-row"
                     key={
@@ -2567,31 +2655,33 @@ function App() {
                     }
                   >
 
-                    <strong>
-                      {
-                        alert.title
-                      }
-                    </strong>
+                    <div className="alert-content">
 
-                    <span>
-                      {
-                        alert.message
-                      }
-                    </span>
+                      <strong>
+                        {
+                          alert.title
+                        }
+                      </strong>
 
-                    <b>
-                      {
+                      <span>
+                        {
+                          alert.message
+                        }
+                      </span>
+
+                    </div>
+
+                    <StatusBadge
+                      status={
                         alert.severity
                       }
-                    </b>
+                    />
 
                   </div>
-
                 )
               )}
 
             </div>
-
           )}
 
         </section>
@@ -2602,26 +2692,36 @@ function App() {
 
         <footer className="footer">
 
-          <span>
-            Data sources:
-            OpenStreetMap /
-            OSRM /
-            Open-Meteo /
-            Copernicus Sentinel-2 /
-            NDMA SACHET /
-            Google News RSS
-          </span>
+          <div>
+            <strong>
+              NER SMART LOGISTICS
+            </strong>
 
-          <span>
-            Decision-support system —
-            not a guaranteed road-closure
-            or safety authority.
-          </span>
+            <span>
+              Real-data decision-support
+              platform for the North
+              Eastern Region.
+            </span>
+          </div>
+
+          <div>
+            <span>
+              OpenStreetMap / OSRM /
+              Open-Meteo / Copernicus
+              Sentinel-2 / NDMA SACHET /
+              Google News RSS
+            </span>
+
+            <small>
+              Decision-support system —
+              not a guaranteed road-closure
+              or safety authority.
+            </small>
+          </div>
 
         </footer>
 
       </main>
-
     </div>
   );
 }
