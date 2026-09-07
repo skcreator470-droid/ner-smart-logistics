@@ -6,9 +6,14 @@ import math
 import os
 import secrets
 import sqlite3
+import threading
 import time
+import xml.etree.ElementTree as ET
+
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Optional
+from urllib.parse import quote
 
 import requests
 from dotenv import load_dotenv
@@ -28,12 +33,17 @@ from hazards import (
     score_route_hazards,
 )
 
-# IMPORTANT:
-# Satellite NDVI function ab satellite.py se aayega.
 from satellite import get_satellite_ndvi
+
+from live_alerts import router as live_alert_router
+
 
 load_dotenv()
 
+
+# =========================================================
+# APP CONFIGURATION
+# =========================================================
 
 APP_TITLE = (
     "NER Smart Logistics "
@@ -158,7 +168,6 @@ def init_db():
     )
 
     # Real initial fleet record.
-    # This is not fake shipment/alert data.
     cur.execute(
         """
         INSERT OR IGNORE INTO vehicles
@@ -192,7 +201,7 @@ init_db()
 
 
 # =========================================================
-# AUTH
+# AUTHENTICATION
 # =========================================================
 
 COOKIE_NAME = "ner_session"
@@ -415,7 +424,8 @@ def signup(data: SignupRequest):
 
     existing = conn.execute(
         """
-        SELECT id FROM users
+        SELECT id
+        FROM users
         WHERE email = ?
         """,
         (email,),
@@ -465,19 +475,17 @@ def signup(data: SignupRequest):
         user_id
     )
 
-    response = {
-        "success": True,
-        "user": {
-            "id": user_id,
-            "name": name,
-            "email": email,
-        },
-    }
-
     from fastapi.responses import JSONResponse
 
     result = JSONResponse(
-        response
+        {
+            "success": True,
+            "user": {
+                "id": user_id,
+                "name": name,
+                "email": email,
+            },
+        }
     )
 
     result.set_cookie(
@@ -607,7 +615,9 @@ def geocode(q: str):
     query = q.strip()
 
     if not query:
-        return {"results": []}
+        return {
+            "results": []
+        }
 
     try:
         response = requests.get(
@@ -622,7 +632,8 @@ def geocode(q: str):
             headers={
                 "User-Agent": (
                     "NER-Smart-Logistics/1.0 "
-                    "(contact: your-skcreator470@gmail.com)"
+                    "(contact: "
+                    "your-skcreator470@gmail.com)"
                 ),
                 "Accept-Language": "en",
             },
@@ -639,18 +650,24 @@ def geocode(q: str):
             try:
                 results.append(
                     {
-                        "name": place.get(
-                            "display_name",
-                            "",
-                        ),
-                        "lat": float(
-                            place["lat"]
-                        ),
-                        "lon": float(
-                            place["lon"]
-                        ),
+                        "name":
+                            place.get(
+                                "display_name",
+                                "",
+                            ),
+
+                        "lat":
+                            float(
+                                place["lat"]
+                            ),
+
+                        "lon":
+                            float(
+                                place["lon"]
+                            ),
                     }
                 )
+
             except (
                 KeyError,
                 TypeError,
@@ -714,6 +731,10 @@ def get_route(
             "steps": "false",
             "alternatives": "true",
         },
+        headers={
+            "User-Agent":
+                "NER-Smart-Logistics/1.0"
+        },
         timeout=30,
     )
 
@@ -752,10 +773,13 @@ def get_route(
 
         output.append(
             {
-                "geometry": geometry,
+                "geometry":
+                    geometry,
+
                 "distance_km":
                     route["distance"]
                     / 1000,
+
                 "duration_minutes":
                     route["duration"]
                     / 60,
@@ -768,59 +792,342 @@ def get_route(
 # =========================================================
 # WEATHER
 # =========================================================
+#
+# REAL Open-Meteo data.
+#
+# Protection against:
+# - repeated route requests
+# - duplicate concurrent requests
+# - temporary HTTP 429 rate limiting
+#
+# No fake weather is generated.
+# =========================================================
+
+WEATHER_CACHE_TTL = 10 * 60
+
+_weather_cache = {}
+
+_weather_locks = {}
+
+_weather_locks_guard = threading.Lock()
+
+
+def _weather_key(
+    latitude,
+    longitude,
+):
+    return (
+        round(float(latitude), 3),
+        round(float(longitude), 3),
+    )
+
+
+def _get_weather_lock(key):
+    with _weather_locks_guard:
+
+        if key not in _weather_locks:
+            _weather_locks[key] = (
+                threading.Lock()
+            )
+
+        return _weather_locks[key]
+
+
+def _weather_unavailable(
+    latitude,
+    longitude,
+    message,
+):
+    return {
+        "source": "Open-Meteo",
+
+        "status": "unavailable",
+
+        "latitude":
+            latitude,
+
+        "longitude":
+            longitude,
+
+        "current": {},
+
+        "temperature_c":
+            None,
+
+        "humidity":
+            None,
+
+        "precipitation_mm":
+            None,
+
+        "rain_mm":
+            None,
+
+        "wind_kmh":
+            None,
+
+        "message":
+            message,
+    }
+
 
 def get_weather(
     lat,
     lon,
 ):
-    response = requests.get(
-        OPEN_METEO_URL,
-        params={
-            "latitude": lat,
-            "longitude": lon,
+    latitude = float(lat)
+    longitude = float(lon)
+
+    key = _weather_key(
+        latitude,
+        longitude,
+    )
+
+    now = time.time()
+
+    # -----------------------------------------------------
+    # CACHE CHECK
+    # -----------------------------------------------------
+
+    cached = _weather_cache.get(key)
+
+    if cached:
+
+        cached_time, cached_data = (
+            cached
+        )
+
+        if (
+            now - cached_time
+            < WEATHER_CACHE_TTL
+        ):
+            return cached_data
+
+    # -----------------------------------------------------
+    # LOCK
+    # -----------------------------------------------------
+
+    lock = _get_weather_lock(key)
+
+    with lock:
+
+        # Check cache again after waiting
+        # for another request.
+
+        cached = _weather_cache.get(key)
+
+        if cached:
+
+            cached_time, cached_data = (
+                cached
+            )
+
+            if (
+                time.time()
+                - cached_time
+                < WEATHER_CACHE_TTL
+            ):
+                return cached_data
+
+        # -------------------------------------------------
+        # OPEN-METEO REQUEST
+        # -------------------------------------------------
+
+        params = {
+            "latitude":
+                latitude,
+
+            "longitude":
+                longitude,
+
             "current": (
                 "temperature_2m,"
                 "relative_humidity_2m,"
                 "precipitation,"
                 "rain,"
-                "wind_speed_10m"
+                "wind_speed_10m,"
+                "weather_code"
             ),
-            "timezone": "auto",
-        },
-        timeout=20,
-    )
 
-    response.raise_for_status()
+            "timezone":
+                "auto",
 
-    current = response.json().get(
-        "current",
-        {},
-    )
+            "forecast_days":
+                1,
+        }
 
-    return {
-        "temperature_c":
-            current.get(
-                "temperature_2m"
-            ),
-        "humidity":
-            current.get(
-                "relative_humidity_2m"
-            ),
-        "precipitation_mm":
-            current.get(
-                "precipitation"
-            ),
-        "rain_mm":
-            current.get(
-                "rain"
-            ),
-        "wind_kmh":
-            current.get(
-                "wind_speed_10m"
-            ),
-        "source":
-            "Open-Meteo",
-    }
+        try:
+
+            response = requests.get(
+                OPEN_METEO_URL,
+                params=params,
+                headers={
+                    "User-Agent":
+                        "NER-Smart-Logistics/1.0"
+                },
+                timeout=15,
+            )
+
+            # -------------------------------------------------
+            # HTTP 429
+            # -------------------------------------------------
+
+            if response.status_code == 429:
+
+                retry_after = (
+                    response.headers.get(
+                        "Retry-After"
+                    )
+                )
+
+                try:
+                    delay = min(
+                        max(
+                            float(
+                                retry_after
+                            ),
+                            1.0,
+                        ),
+                        10.0,
+                    )
+
+                except (
+                    TypeError,
+                    ValueError,
+                ):
+                    delay = 3.0
+
+                print(
+                    "Open-Meteo rate limited. "
+                    f"Retrying after {delay}s."
+                )
+
+                time.sleep(delay)
+
+                response = requests.get(
+                    OPEN_METEO_URL,
+                    params=params,
+                    headers={
+                        "User-Agent":
+                            "NER-Smart-Logistics/1.0"
+                    },
+                    timeout=15,
+                )
+
+            response.raise_for_status()
+
+            payload = response.json()
+
+            current = payload.get(
+                "current",
+                {},
+            )
+
+            weather = {
+                "source":
+                    "Open-Meteo",
+
+                "status":
+                    "live",
+
+                "latitude":
+                    latitude,
+
+                "longitude":
+                    longitude,
+
+                "timezone":
+                    payload.get(
+                        "timezone"
+                    ),
+
+                "current":
+                    current,
+
+                "temperature_c":
+                    current.get(
+                        "temperature_2m"
+                    ),
+
+                "humidity":
+                    current.get(
+                        "relative_humidity_2m"
+                    ),
+
+                "precipitation_mm":
+                    current.get(
+                        "precipitation"
+                    ),
+
+                "rain_mm":
+                    current.get(
+                        "rain"
+                    ),
+
+                "wind_kmh":
+                    current.get(
+                        "wind_speed_10m"
+                    ),
+
+                "weather_code":
+                    current.get(
+                        "weather_code"
+                    ),
+
+                "fetched_at":
+                    time.time(),
+            }
+
+            # -------------------------------------------------
+            # SAVE REAL DATA IN CACHE
+            # -------------------------------------------------
+
+            _weather_cache[key] = (
+                time.time(),
+                weather,
+            )
+
+            return weather
+
+        except requests.RequestException as e:
+
+            print(
+                "Open-Meteo weather request failed:",
+                e,
+            )
+
+            # -------------------------------------------------
+            # IMPORTANT:
+            #
+            # No fake weather.
+            # Route can continue with unknown
+            # weather status.
+            # -------------------------------------------------
+
+            return _weather_unavailable(
+                latitude,
+                longitude,
+                (
+                    "Live weather temporarily "
+                    "unavailable from Open-Meteo."
+                ),
+            )
+
+        except Exception as e:
+
+            print(
+                "Weather processing failed:",
+                e,
+            )
+
+            return _weather_unavailable(
+                latitude,
+                longitude,
+                (
+                    "Live weather data could "
+                    "not be processed."
+                ),
+            )
 
 
 # =========================================================
@@ -831,59 +1138,101 @@ def risk_engine(
     weather,
 ):
     score = 0
+
     reasons = []
 
-    rain = (
-        weather.get(
-            "rain_mm"
-        )
-        or 0
+    if not weather:
+        weather = {}
+
+    rain = weather.get(
+        "rain_mm"
     )
 
-    wind = (
-        weather.get(
-            "wind_kmh"
-        )
-        or 0
+    wind = weather.get(
+        "wind_kmh"
     )
 
-    if rain >= 10:
-        score += 20
+    # -----------------------------------------------------
+    # UNKNOWN WEATHER
+    # -----------------------------------------------------
+
+    if (
+        weather.get("status")
+        == "unavailable"
+    ):
         reasons.append(
-            "Heavy rainfall detected"
+            "Live weather temporarily unavailable"
         )
 
-    elif rain > 0:
-        score += 10
-        reasons.append(
-            "Rain detected"
-        )
+    # -----------------------------------------------------
+    # RAIN
+    # -----------------------------------------------------
 
-    if wind >= 45:
-        score += 25
-        reasons.append(
-            "Strong wind detected"
-        )
+    if rain is not None:
 
-    elif wind >= 30:
-        score += 10
-        reasons.append(
-            "Elevated wind speed"
-        )
+        if rain >= 10:
+
+            score += 20
+
+            reasons.append(
+                "Heavy rainfall detected"
+            )
+
+        elif rain > 0:
+
+            score += 10
+
+            reasons.append(
+                "Rain detected"
+            )
+
+    # -----------------------------------------------------
+    # WIND
+    # -----------------------------------------------------
+
+    if wind is not None:
+
+        if wind >= 45:
+
+            score += 25
+
+            reasons.append(
+                "Strong wind detected"
+            )
+
+        elif wind >= 30:
+
+            score += 10
+
+            reasons.append(
+                "Elevated wind speed"
+            )
+
+    # -----------------------------------------------------
+    # LEVEL
+    # -----------------------------------------------------
 
     if score >= 70:
+
         level = "High"
 
     elif score >= 40:
+
         level = "Medium"
 
     else:
+
         level = "Low"
 
     return {
-        "score": score,
-        "level": level,
-        "reasons": reasons,
+        "score":
+            score,
+
+        "level":
+            level,
+
+        "reasons":
+            reasons,
     }
 
 
@@ -894,8 +1243,10 @@ def risk_engine(
 class RouteRequest(BaseModel):
     start: str
     destination: str
+
     start_lat: float
     start_lon: float
+
     destination_lat: float
     destination_lon: float
 
@@ -929,6 +1280,7 @@ def build_route_result(
     for alert in hazard_result[
         "matched_alerts"
     ]:
+
         reasons.append(
             (
                 f"{alert.get('hazard_type', 'Hazard')} "
@@ -938,24 +1290,33 @@ def build_route_result(
         )
 
     if final_score >= 70:
+
         level = "High"
 
     elif final_score >= 40:
+
         level = "Medium"
 
     else:
+
         level = "Low"
 
     return {
-        "start": start,
-        "destination": destination,
+        "start":
+            start,
+
+        "destination":
+            destination,
+
         "geometry":
             route["geometry"],
+
         "distance_km":
             round(
                 route["distance_km"],
                 2,
             ),
+
         "duration_hours":
             round(
                 route[
@@ -964,26 +1325,33 @@ def build_route_result(
                 / 60,
                 2,
             ),
+
         "duration_minutes":
             round(
                 route[
                     "duration_minutes"
                 ]
             ),
+
         "risk_score":
             final_score,
+
         "risk_level":
             level,
+
         "reasons":
             reasons,
+
         "hazard_alerts":
             hazard_result[
                 "matched_alerts"
             ],
+
         "regional_hazard_alerts":
             hazard_result[
                 "regional_alerts"
             ],
+
         "route_hazard_affected":
             hazard_result[
                 "route_affected"
@@ -998,6 +1366,10 @@ def analyze_route(
 ):
     get_current_user(request)
 
+    # -----------------------------------------------------
+    # REAL ROAD ROUTES
+    # -----------------------------------------------------
+
     routes = get_route(
         data.start_lat,
         data.start_lon,
@@ -1005,7 +1377,15 @@ def analyze_route(
         data.destination_lon,
     )
 
+    # -----------------------------------------------------
+    # REAL NDMA SACHET HAZARDS
+    # -----------------------------------------------------
+
     hazards = sachet_feed.get_alerts()
+
+    # -----------------------------------------------------
+    # REAL OPEN-METEO WEATHER
+    # -----------------------------------------------------
 
     weather = get_weather(
         data.destination_lat,
@@ -1015,6 +1395,7 @@ def analyze_route(
     candidates = []
 
     for route in routes:
+
         candidates.append(
             build_route_result(
                 route,
@@ -1025,8 +1406,10 @@ def analyze_route(
             )
         )
 
-    # Prefer route without a verified
-    # spatial hazard intersection.
+    # -----------------------------------------------------
+    # SAFE ROUTES
+    # -----------------------------------------------------
+
     safe_candidates = [
         x
         for x in candidates
@@ -1036,6 +1419,7 @@ def analyze_route(
     ]
 
     if safe_candidates:
+
         selected = min(
             safe_candidates,
             key=lambda x:
@@ -1047,6 +1431,7 @@ def analyze_route(
         )
 
     else:
+
         selected = min(
             candidates,
             key=lambda x:
@@ -1062,45 +1447,62 @@ def analyze_route(
         "geometry"
     ]
 
+    if not geometry:
+
+        raise HTTPException(
+            status_code=500,
+            detail="Route geometry unavailable",
+        )
+
     midpoint = geometry[
         len(geometry) // 2
     ]
 
-    # =====================================================
+    # -----------------------------------------------------
     # REAL SATELLITE NDVI
-    # =====================================================
-    # Function imported from satellite.py
+    # -----------------------------------------------------
+
     satellite = get_satellite_ndvi(
         midpoint[0],
         midpoint[1],
     )
 
     return {
-        "success": True,
+        "success":
+            True,
 
-        "route": selected,
+        "route":
+            selected,
 
-        "route_candidates": candidates,
+        "route_candidates":
+            candidates,
 
         "route_selection":
             route_selection,
 
-        "weather": weather,
+        "weather":
+            weather,
 
-        "satellite": satellite,
+        "satellite":
+            satellite,
 
-        "midpoint": {
-            "lat": midpoint[0],
-            "lon": midpoint[1],
-        },
+        "midpoint":
+            {
+                "lat":
+                    midpoint[0],
 
-        "data_sources": [
-            "OpenStreetMap",
-            "OSRM",
-            "Open-Meteo",
-            "Copernicus Sentinel-2 L2A",
-            "NDMA SACHET",
-        ],
+                "lon":
+                    midpoint[1],
+            },
+
+        "data_sources":
+            [
+                "OpenStreetMap",
+                "OSRM",
+                "Open-Meteo",
+                "Copernicus Sentinel-2 L2A",
+                "NDMA SACHET",
+            ],
 
         "warning":
             (
@@ -1125,21 +1527,30 @@ def get_hazards(
     alerts = sachet_feed.get_alerts()
 
     return {
-        "success": True,
+        "success":
+            True,
+
         "source":
             "NDMA SACHET",
+
         "source_url":
             SACHET_URL,
+
         "live":
             sachet_feed.last_error is None,
+
         "last_updated":
             sachet_feed.last_success,
+
         "last_refresh":
             sachet_feed.last_refresh,
+
         "error":
             sachet_feed.last_error,
+
         "count":
             len(alerts),
+
         "alerts":
             alerts,
     }
@@ -1168,11 +1579,14 @@ def get_vehicles(
     conn.close()
 
     return {
-        "success": True,
-        "vehicles": [
-            dict(row)
-            for row in rows
-        ],
+        "success":
+            True,
+
+        "vehicles":
+            [
+                dict(row)
+                for row in rows
+            ],
     }
 
 
@@ -1191,6 +1605,7 @@ def create_vehicle(
     conn = get_db()
 
     try:
+
         cur = conn.execute(
             """
             INSERT INTO vehicles
@@ -1217,6 +1632,7 @@ def create_vehicle(
         vehicle_id = cur.lastrowid
 
     except sqlite3.IntegrityError:
+
         conn.close()
 
         raise HTTPException(
@@ -1227,8 +1643,11 @@ def create_vehicle(
     conn.close()
 
     return {
-        "success": True,
-        "id": vehicle_id,
+        "success":
+            True,
+
+        "id":
+            vehicle_id,
     }
 
 
@@ -1272,13 +1691,16 @@ def update_location(
     conn.close()
 
     if cur.rowcount == 0:
+
         raise HTTPException(
             status_code=404,
             detail="Vehicle not found",
         )
 
     return {
-        "success": True,
+        "success":
+            True,
+
         "message":
             "Vehicle location updated",
     }
@@ -1307,11 +1729,14 @@ def get_shipments(
     conn.close()
 
     return {
-        "success": True,
-        "shipments": [
-            dict(row)
-            for row in rows
-        ],
+        "success":
+            True,
+
+        "shipments":
+            [
+                dict(row)
+                for row in rows
+            ],
     }
 
 
@@ -1333,6 +1758,7 @@ def create_shipment(
     conn = get_db()
 
     try:
+
         cur = conn.execute(
             """
             INSERT INTO shipments
@@ -1365,6 +1791,7 @@ def create_shipment(
         shipment_id = cur.lastrowid
 
     except sqlite3.IntegrityError:
+
         conn.close()
 
         raise HTTPException(
@@ -1375,8 +1802,11 @@ def create_shipment(
     conn.close()
 
     return {
-        "success": True,
-        "id": shipment_id,
+        "success":
+            True,
+
+        "id":
+            shipment_id,
     }
 
 
@@ -1412,13 +1842,15 @@ def update_shipment_status(
     conn.close()
 
     if cur.rowcount == 0:
+
         raise HTTPException(
             status_code=404,
             detail="Shipment not found",
         )
 
     return {
-        "success": True,
+        "success":
+            True,
     }
 
 
@@ -1445,11 +1877,14 @@ def get_alerts(
     conn.close()
 
     return {
-        "success": True,
-        "alerts": [
-            dict(row)
-            for row in rows
-        ],
+        "success":
+            True,
+
+        "alerts":
+            [
+                dict(row)
+                for row in rows
+            ],
     }
 
 
@@ -1496,8 +1931,11 @@ def create_alert(
     conn.close()
 
     return {
-        "success": True,
-        "id": alert_id,
+        "success":
+            True,
+
+        "id":
+            alert_id,
     }
 
 
@@ -1507,8 +1945,10 @@ def create_alert(
 
 class EmergencyRerouteRequest(BaseModel):
     vehicle_id: int
+
     destination_lat: float
     destination_lon: float
+
     destination_name: str = (
         "Emergency Destination"
     )
@@ -1535,6 +1975,7 @@ def emergency_reroute(
     conn.close()
 
     if not vehicle:
+
         raise HTTPException(
             status_code=404,
             detail="Vehicle not found",
@@ -1544,6 +1985,7 @@ def emergency_reroute(
         vehicle["lat"] is None
         or vehicle["lon"] is None
     ):
+
         raise HTTPException(
             status_code=400,
             detail=(
@@ -1552,6 +1994,10 @@ def emergency_reroute(
             ),
         )
 
+    # -----------------------------------------------------
+    # REAL ROUTES
+    # -----------------------------------------------------
+
     routes = get_route(
         vehicle["lat"],
         vehicle["lon"],
@@ -1559,7 +2005,15 @@ def emergency_reroute(
         data.destination_lon,
     )
 
+    # -----------------------------------------------------
+    # REAL HAZARDS
+    # -----------------------------------------------------
+
     hazards = sachet_feed.get_alerts()
+
+    # -----------------------------------------------------
+    # REAL WEATHER
+    # -----------------------------------------------------
 
     weather = get_weather(
         data.destination_lat,
@@ -1569,6 +2023,7 @@ def emergency_reroute(
     candidates = []
 
     for route in routes:
+
         candidates.append(
             build_route_result(
                 route,
@@ -1591,6 +2046,7 @@ def emergency_reroute(
     ]
 
     if safe_candidates:
+
         selected = min(
             safe_candidates,
             key=lambda x:
@@ -1602,6 +2058,7 @@ def emergency_reroute(
         )
 
     else:
+
         selected = min(
             candidates,
             key=lambda x:
@@ -1614,13 +2071,24 @@ def emergency_reroute(
         )
 
     return {
-        "success": True,
-        "vehicle": dict(vehicle),
-        "route": selected,
-        "route_candidates": candidates,
+        "success":
+            True,
+
+        "vehicle":
+            dict(vehicle),
+
+        "route":
+            selected,
+
+        "route_candidates":
+            candidates,
+
         "selection":
             selection,
-        "weather": weather,
+
+        "weather":
+            weather,
+
         "warning":
             (
                 "Emergency reroute uses the vehicle's "
@@ -1642,11 +2110,14 @@ async def websocket_endpoint(
     await websocket.accept()
 
     try:
+
         while True:
+
             await websocket.send_json(
                 {
                     "type":
                         "heartbeat",
+
                     "timestamp":
                         datetime.now(
                             timezone.utc
@@ -1654,7 +2125,9 @@ async def websocket_endpoint(
                 }
             )
 
-            await asyncio.sleep(10)
+            await asyncio.sleep(
+                10
+            )
 
     except Exception:
         pass
@@ -1665,11 +2138,15 @@ async def websocket_endpoint(
 # =========================================================
 
 async def hazard_refresh_loop():
+
     while True:
+
         try:
+
             await asyncio.to_thread(
                 sachet_feed.refresh
             )
+
         except Exception:
             pass
 
@@ -1680,6 +2157,7 @@ async def hazard_refresh_loop():
 
 @app.on_event("startup")
 async def startup_event():
+
     asyncio.create_task(
         hazard_refresh_loop()
     )
@@ -1691,11 +2169,14 @@ async def startup_event():
 
 @app.get("/")
 def root():
+
     return {
         "name":
             APP_TITLE,
+
         "status":
             "running",
+
         "version":
             "1.0.0",
     }
@@ -1704,11 +2185,6 @@ def root():
 # =========================================================
 # REAL NER NEWS FEED
 # =========================================================
-
-import xml.etree.ElementTree as ET
-from urllib.parse import quote
-from email.utils import parsedate_to_datetime
-
 
 NER_STATES = [
     "Assam",
@@ -1743,6 +2219,7 @@ NER_HAZARD_KEYWORDS = [
 
 
 def get_real_ner_news():
+
     all_news = []
 
     for state in NER_STATES:
@@ -1759,6 +2236,7 @@ def get_real_ner_news():
         )
 
         try:
+
             response = requests.get(
                 url,
                 headers={
@@ -1802,42 +2280,50 @@ def get_real_ner_news():
                     f"{title} {description}"
                 ).lower()
 
-                # -----------------------------------------
+                # -------------------------------------------------
                 # STRICT NER STATE FILTER
-                # -----------------------------------------
+                # -------------------------------------------------
 
                 matched_state = None
 
                 for ner_state in NER_STATES:
+
                     if (
                         ner_state.lower()
                         in title.lower()
                     ):
+
                         matched_state = ner_state
+
                         break
 
                 if not matched_state:
                     continue
 
-                # -----------------------------------------
+                # -------------------------------------------------
                 # HAZARD CLASSIFICATION
-                # -----------------------------------------
+                # -------------------------------------------------
 
                 matched_hazard = (
                     "General NER News"
                 )
 
                 for keyword in NER_HAZARD_KEYWORDS:
+
                     if keyword in text:
+
                         matched_hazard = (
                             keyword.title()
                         )
+
                         break
 
                 published_iso = None
 
                 if pub_date:
+
                     try:
+
                         published_iso = (
                             parsedate_to_datetime(
                                 pub_date
@@ -1845,6 +2331,7 @@ def get_real_ner_news():
                         )
 
                     except Exception:
+
                         published_iso = pub_date
 
                 all_news.append(
@@ -1876,14 +2363,15 @@ def get_real_ner_news():
                 )
 
         except Exception as e:
+
             print(
                 f"NER news fetch failed for {state}:",
                 e,
             )
 
-    # ---------------------------------------------
+    # ---------------------------------------------------------
     # REMOVE DUPLICATES
-    # ---------------------------------------------
+    # ---------------------------------------------------------
 
     unique_news = {}
 
@@ -1905,9 +2393,9 @@ def get_real_ner_news():
         unique_news.values()
     )
 
-    # ---------------------------------------------
+    # ---------------------------------------------------------
     # LATEST FIRST
-    # ---------------------------------------------
+    # ---------------------------------------------------------
 
     news.sort(
         key=lambda x:
@@ -1984,14 +2472,10 @@ def ner_news():
     }
 
 
-from live_alerts import router as live_alert_router
-app.include_router(live_alert_router)
+# =========================================================
+# LIVE ALERT ROUTER
+# =========================================================
 
-
-
-
-
-
-
-
-
+app.include_router(
+    live_alert_router
+)
