@@ -60,6 +60,11 @@ OPEN_METEO_URL = (
     "https://api.open-meteo.com/v1/forecast"
 )
 
+MET_NORWAY_URL = (
+    "https://api.met.no/weatherapi/"
+    "locationforecast/2.0/compact"
+)
+
 
 app = FastAPI(
     title=APP_TITLE,
@@ -793,14 +798,21 @@ def get_route(
 # WEATHER
 # =========================================================
 #
-# REAL Open-Meteo data.
+# REAL WEATHER ONLY
 #
-# Protection against:
-# - repeated route requests
-# - duplicate concurrent requests
-# - temporary HTTP 429 rate limiting
+# Primary:
+#   Open-Meteo
 #
-# No fake weather is generated.
+# Fallback:
+#   MET Norway
+#
+# Additional protection:
+#   - 10 minute cache
+#   - concurrent-request lock
+#   - one retry after Open-Meteo 429
+#   - old successful real data can be shown as stale
+#
+# NO FAKE WEATHER VALUES.
 # =========================================================
 
 WEATHER_CACHE_TTL = 10 * 60
@@ -823,6 +835,7 @@ def _weather_key(
 
 
 def _get_weather_lock(key):
+
     with _weather_locks_guard:
 
         if key not in _weather_locks:
@@ -838,10 +851,13 @@ def _weather_unavailable(
     longitude,
     message,
 ):
-    return {
-        "source": "Open-Meteo",
 
-        "status": "unavailable",
+    return {
+        "source":
+            "Live weather providers",
+
+        "status":
+            "unavailable",
 
         "latitude":
             latitude,
@@ -849,7 +865,8 @@ def _weather_unavailable(
         "longitude":
             longitude,
 
-        "current": {},
+        "current":
+            {},
 
         "temperature_c":
             None,
@@ -866,15 +883,290 @@ def _weather_unavailable(
         "wind_kmh":
             None,
 
+        "weather_code":
+            None,
+
         "message":
             message,
+
+        "fetched_at":
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
     }
+
+
+def _get_open_meteo_weather(
+    latitude,
+    longitude,
+):
+
+    params = {
+        "latitude":
+            latitude,
+
+        "longitude":
+            longitude,
+
+        "current": (
+            "temperature_2m,"
+            "relative_humidity_2m,"
+            "precipitation,"
+            "rain,"
+            "wind_speed_10m,"
+            "weather_code"
+        ),
+
+        "timezone":
+            "auto",
+
+        "forecast_days":
+            1,
+    }
+
+    headers = {
+        "User-Agent":
+            "NER-Smart-Logistics/1.0 "
+            "(contact: "
+            "your-skcreator470@gmail.com)"
+    }
+
+    response = requests.get(
+        OPEN_METEO_URL,
+        params=params,
+        headers=headers,
+        timeout=15,
+    )
+
+    # Caller handles 429.
+    if response.status_code == 429:
+        return response
+
+    response.raise_for_status()
+
+    payload = response.json()
+
+    current = payload.get(
+        "current",
+        {},
+    )
+
+    return {
+        "source":
+            "Open-Meteo",
+
+        "status":
+            "live",
+
+        "latitude":
+            latitude,
+
+        "longitude":
+            longitude,
+
+        "timezone":
+            payload.get(
+                "timezone"
+            ),
+
+        "current":
+            current,
+
+        "temperature_c":
+            current.get(
+                "temperature_2m"
+            ),
+
+        "humidity":
+            current.get(
+                "relative_humidity_2m"
+            ),
+
+        "precipitation_mm":
+            current.get(
+                "precipitation"
+            ),
+
+        "rain_mm":
+            current.get(
+                "rain"
+            ),
+
+        "wind_kmh":
+            current.get(
+                "wind_speed_10m"
+            ),
+
+        "weather_code":
+            current.get(
+                "weather_code"
+            ),
+
+        "fetched_at":
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
+    }
+
+
+def _get_met_norway_weather(
+    latitude,
+    longitude,
+):
+
+    headers = {
+        "User-Agent":
+            "NER-Smart-Logistics/1.0 "
+            "(contact: "
+            "your-skcreator470@gmail.com)"
+    }
+
+    response = requests.get(
+        MET_NORWAY_URL,
+        params={
+            "lat":
+                latitude,
+
+            "lon":
+                longitude,
+        },
+        headers=headers,
+        timeout=20,
+    )
+
+    response.raise_for_status()
+
+    payload = response.json()
+
+    properties = payload.get(
+        "properties",
+        {},
+    )
+
+    timeseries = properties.get(
+        "timeseries",
+        [],
+    )
+
+    if not timeseries:
+        raise ValueError(
+            "MET Norway returned no forecast"
+        )
+
+    # First forecast entry is the closest
+    # available forecast to the current time.
+    current_data = timeseries[0]
+
+    data = current_data.get(
+        "data",
+        {},
+    )
+
+    instant = data.get(
+        "instant",
+        {},
+    )
+
+    details = instant.get(
+        "details",
+        {},
+    )
+
+    next_1_hours = data.get(
+        "next_1_hours",
+        {},
+    )
+
+    precipitation_details = (
+        next_1_hours.get(
+            "details",
+            {},
+        )
+    )
+
+    temperature = details.get(
+        "air_temperature"
+    )
+
+    humidity = details.get(
+        "relative_humidity"
+    )
+
+    wind_speed = details.get(
+        "wind_speed"
+    )
+
+    precipitation = (
+        precipitation_details.get(
+            "precipitation_amount"
+        )
+    )
+
+    # MET Norway gives wind in m/s.
+    wind_kmh = None
+
+    if wind_speed is not None:
+
+        wind_kmh = (
+            float(wind_speed)
+            * 3.6
+        )
+
+    # MET Norway precipitation amount
+    # is an hourly forecast amount in mm.
+    rain_mm = precipitation
+
+    weather = {
+        "source":
+            "MET Norway",
+
+        "status":
+            "live",
+
+        "latitude":
+            latitude,
+
+        "longitude":
+            longitude,
+
+        "timezone":
+            "UTC",
+
+        "current":
+            details,
+
+        "temperature_c":
+            temperature,
+
+        "humidity":
+            humidity,
+
+        "precipitation_mm":
+            precipitation,
+
+        "rain_mm":
+            rain_mm,
+
+        "wind_kmh":
+            wind_kmh,
+
+        "weather_code":
+            None,
+
+        "fetched_at":
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
+    }
+
+    return weather
 
 
 def get_weather(
     lat,
     lon,
 ):
+
     latitude = float(lat)
     longitude = float(lon)
 
@@ -883,13 +1175,13 @@ def get_weather(
         longitude,
     )
 
-    now = time.time()
-
     # -----------------------------------------------------
     # CACHE CHECK
     # -----------------------------------------------------
 
-    cached = _weather_cache.get(key)
+    cached = _weather_cache.get(
+        key
+    )
 
     if cached:
 
@@ -898,23 +1190,35 @@ def get_weather(
         )
 
         if (
-            now - cached_time
+            time.time()
+            - cached_time
             < WEATHER_CACHE_TTL
         ):
-            return cached_data
+
+            result = dict(
+                cached_data
+            )
+
+            result["cached"] = True
+
+            return result
 
     # -----------------------------------------------------
     # LOCK
     # -----------------------------------------------------
 
-    lock = _get_weather_lock(key)
+    lock = _get_weather_lock(
+        key
+    )
 
     with lock:
 
-        # Check cache again after waiting
-        # for another request.
+        # Check cache again because another
+        # request may have populated it.
 
-        cached = _weather_cache.get(key)
+        cached = _weather_cache.get(
+            key
+        )
 
         if cached:
 
@@ -927,52 +1231,40 @@ def get_weather(
                 - cached_time
                 < WEATHER_CACHE_TTL
             ):
-                return cached_data
+
+                result = dict(
+                    cached_data
+                )
+
+                result["cached"] = True
+
+                return result
 
         # -------------------------------------------------
-        # OPEN-METEO REQUEST
+        # TRY OPEN-METEO
         # -------------------------------------------------
-
-        params = {
-            "latitude":
-                latitude,
-
-            "longitude":
-                longitude,
-
-            "current": (
-                "temperature_2m,"
-                "relative_humidity_2m,"
-                "precipitation,"
-                "rain,"
-                "wind_speed_10m,"
-                "weather_code"
-            ),
-
-            "timezone":
-                "auto",
-
-            "forecast_days":
-                1,
-        }
 
         try:
 
-            response = requests.get(
-                OPEN_METEO_URL,
-                params=params,
-                headers={
-                    "User-Agent":
-                        "NER-Smart-Logistics/1.0"
-                },
-                timeout=15,
+            response = (
+                _get_open_meteo_weather(
+                    latitude,
+                    longitude,
+                )
             )
 
             # -------------------------------------------------
-            # HTTP 429
+            # HANDLE 429
             # -------------------------------------------------
 
-            if response.status_code == 429:
+            if (
+                isinstance(
+                    response,
+                    requests.Response,
+                )
+                and response.status_code
+                == 429
+            ):
 
                 retry_after = (
                     response.headers.get(
@@ -981,6 +1273,7 @@ def get_weather(
                 )
 
                 try:
+
                     delay = min(
                         max(
                             float(
@@ -988,33 +1281,220 @@ def get_weather(
                             ),
                             1.0,
                         ),
-                        10.0,
+                        8.0,
                     )
 
                 except (
                     TypeError,
                     ValueError,
                 ):
+
                     delay = 3.0
 
                 print(
                     "Open-Meteo rate limited. "
-                    f"Retrying after {delay}s."
+                    f"Waiting {delay}s before retry."
                 )
 
-                time.sleep(delay)
-
-                response = requests.get(
-                    OPEN_METEO_URL,
-                    params=params,
-                    headers={
-                        "User-Agent":
-                            "NER-Smart-Logistics/1.0"
-                    },
-                    timeout=15,
+                time.sleep(
+                    delay
                 )
 
-            response.raise_for_status()
+                response = (
+                    _get_open_meteo_weather(
+                        latitude,
+                        longitude,
+                    )
+                )
+
+            if isinstance(
+                response,
+                requests.Response,
+            ):
+
+                response.raise_for_status()
+
+            else:
+
+                weather = response
+
+                # Cache only actual real data.
+                _weather_cache[key] = (
+                    time.time(),
+                    weather,
+                )
+
+                return weather
+
+        except Exception as open_meteo_error:
+
+            print(
+                "Open-Meteo weather unavailable:",
+                open_meteo_error,
+            )
+
+            # -------------------------------------------------
+            # REAL FALLBACK: MET NORWAY
+            # -------------------------------------------------
+
+            try:
+
+                print(
+                    "Trying MET Norway "
+                    "live weather fallback."
+                )
+
+                weather = (
+                    _get_met_norway_weather(
+                        latitude,
+                        longitude,
+                    )
+                )
+
+                _weather_cache[key] = (
+                    time.time(),
+                    weather,
+                )
+
+                return weather
+
+            except Exception as met_error:
+
+                print(
+                    "MET Norway weather unavailable:",
+                    met_error,
+                )
+
+                # -------------------------------------------------
+                # LAST SUCCESSFUL REAL DATA
+                # -------------------------------------------------
+
+                cached = _weather_cache.get(
+                    key
+                )
+
+                if cached:
+
+                    cached_time, cached_data = (
+                        cached
+                    )
+
+                    stale_weather = dict(
+                        cached_data
+                    )
+
+                    stale_weather[
+                        "status"
+                    ] = "stale"
+
+                    stale_weather[
+                        "cached"
+                    ] = True
+
+                    stale_weather[
+                        "message"
+                    ] = (
+                        "Live weather providers "
+                        "are temporarily unavailable. "
+                        "Showing the last successfully "
+                        "fetched real weather data."
+                    )
+
+                    stale_weather[
+                        "stale_since"
+                    ] = (
+                        datetime.now(
+                            timezone.utc
+                        ).isoformat()
+                    )
+
+                    return stale_weather
+
+                return _weather_unavailable(
+                    latitude,
+                    longitude,
+                    (
+                        "Live weather is temporarily "
+                        "unavailable from Open-Meteo "
+                        "and MET Norway."
+                    ),
+                )
+
+        except requests.RequestException as e:
+
+            print(
+                "Weather request error:",
+                e,
+            )
+
+            try:
+
+                weather = (
+                    _get_met_norway_weather(
+                        latitude,
+                        longitude,
+                    )
+                )
+
+                _weather_cache[key] = (
+                    time.time(),
+                    weather,
+                )
+
+                return weather
+
+            except Exception as met_error:
+
+                print(
+                    "MET Norway fallback failed:",
+                    met_error,
+                )
+
+                cached = _weather_cache.get(
+                    key
+                )
+
+                if cached:
+
+                    cached_time, cached_data = (
+                        cached
+                    )
+
+                    stale_weather = dict(
+                        cached_data
+                    )
+
+                    stale_weather[
+                        "status"
+                    ] = "stale"
+
+                    stale_weather[
+                        "cached"
+                    ] = True
+
+                    stale_weather[
+                        "message"
+                    ] = (
+                        "Showing the last successfully "
+                        "fetched real weather data."
+                    )
+
+                    return stale_weather
+
+                return _weather_unavailable(
+                    latitude,
+                    longitude,
+                    (
+                        "Live weather temporarily "
+                        "unavailable."
+                    ),
+                )
+
+        # -----------------------------------------------------
+        # PROCESS OPEN-METEO RESPONSE
+        # -----------------------------------------------------
+
+        try:
 
             payload = response.json()
 
@@ -1029,6 +1509,9 @@ def get_weather(
 
                 "status":
                     "live",
+
+                "cached":
+                    False,
 
                 "latitude":
                     latitude,
@@ -1075,11 +1558,107 @@ def get_weather(
                     ),
 
                 "fetched_at":
-                    time.time(),
+                    datetime.now(
+                        timezone.utc
+                    ).isoformat(),
             }
 
             # -------------------------------------------------
-            # SAVE REAL DATA IN CACHE
+            # VERIFY VALUES
+            #
+            # If the provider technically responds but
+            # gives no usable current weather values,
+            # try the real fallback provider.
+            # -------------------------------------------------
+
+            has_weather_value = any(
+                value is not None
+                for value in [
+                    weather.get(
+                        "temperature_c"
+                    ),
+                    weather.get(
+                        "humidity"
+                    ),
+                    weather.get(
+                        "rain_mm"
+                    ),
+                    weather.get(
+                        "wind_kmh"
+                    ),
+                ]
+            )
+
+            if not has_weather_value:
+
+                print(
+                    "Open-Meteo returned no usable "
+                    "current weather values. "
+                    "Trying MET Norway."
+                )
+
+                try:
+
+                    weather = (
+                        _get_met_norway_weather(
+                            latitude,
+                            longitude,
+                        )
+                    )
+
+                except Exception as met_error:
+
+                    print(
+                        "MET Norway fallback failed:",
+                        met_error,
+                    )
+
+                    cached = (
+                        _weather_cache.get(
+                            key
+                        )
+                    )
+
+                    if cached:
+
+                        cached_time, cached_data = (
+                            cached
+                        )
+
+                        stale_weather = dict(
+                            cached_data
+                        )
+
+                        stale_weather[
+                            "status"
+                        ] = "stale"
+
+                        stale_weather[
+                            "cached"
+                        ] = True
+
+                        stale_weather[
+                            "message"
+                        ] = (
+                            "Live weather providers "
+                            "returned no usable values. "
+                            "Showing previous real weather."
+                        )
+
+                        return stale_weather
+
+                    return _weather_unavailable(
+                        latitude,
+                        longitude,
+                        (
+                            "Weather providers "
+                            "returned no usable "
+                            "current values."
+                        ),
+                    )
+
+            # -------------------------------------------------
+            # SAVE REAL WEATHER
             # -------------------------------------------------
 
             _weather_cache[key] = (
@@ -1089,30 +1668,6 @@ def get_weather(
 
             return weather
 
-        except requests.RequestException as e:
-
-            print(
-                "Open-Meteo weather request failed:",
-                e,
-            )
-
-            # -------------------------------------------------
-            # IMPORTANT:
-            #
-            # No fake weather.
-            # Route can continue with unknown
-            # weather status.
-            # -------------------------------------------------
-
-            return _weather_unavailable(
-                latitude,
-                longitude,
-                (
-                    "Live weather temporarily "
-                    "unavailable from Open-Meteo."
-                ),
-            )
-
         except Exception as e:
 
             print(
@@ -1120,14 +1675,37 @@ def get_weather(
                 e,
             )
 
-            return _weather_unavailable(
-                latitude,
-                longitude,
-                (
-                    "Live weather data could "
-                    "not be processed."
-                ),
-            )
+            try:
+
+                weather = (
+                    _get_met_norway_weather(
+                        latitude,
+                        longitude,
+                    )
+                )
+
+                _weather_cache[key] = (
+                    time.time(),
+                    weather,
+                )
+
+                return weather
+
+            except Exception as met_error:
+
+                print(
+                    "MET Norway fallback failed:",
+                    met_error,
+                )
+
+                return _weather_unavailable(
+                    latitude,
+                    longitude,
+                    (
+                        "Live weather data could "
+                        "not be processed."
+                    ),
+                )
 
 
 # =========================================================
@@ -1137,6 +1715,7 @@ def get_weather(
 def risk_engine(
     weather,
 ):
+
     score = 0
 
     reasons = []
@@ -1160,6 +1739,7 @@ def risk_engine(
         weather.get("status")
         == "unavailable"
     ):
+
         reasons.append(
             "Live weather temporarily unavailable"
         )
@@ -1241,7 +1821,9 @@ def risk_engine(
 # =========================================================
 
 class RouteRequest(BaseModel):
+
     start: str
+
     destination: str
 
     start_lat: float
@@ -1258,6 +1840,7 @@ def build_route_result(
     weather,
     hazards,
 ):
+
     risk = risk_engine(
         weather
     )
@@ -1364,6 +1947,7 @@ def analyze_route(
     data: RouteRequest,
     request: Request,
 ):
+
     get_current_user(request)
 
     # -----------------------------------------------------
@@ -1384,7 +1968,7 @@ def analyze_route(
     hazards = sachet_feed.get_alerts()
 
     # -----------------------------------------------------
-    # REAL OPEN-METEO WEATHER
+    # REAL WEATHER
     # -----------------------------------------------------
 
     weather = get_weather(
@@ -1500,6 +2084,7 @@ def analyze_route(
                 "OpenStreetMap",
                 "OSRM",
                 "Open-Meteo",
+                "MET Norway",
                 "Copernicus Sentinel-2 L2A",
                 "NDMA SACHET",
             ],
@@ -1522,6 +2107,7 @@ def analyze_route(
 def get_hazards(
     request: Request,
 ):
+
     get_current_user(request)
 
     alerts = sachet_feed.get_alerts()
@@ -1564,6 +2150,7 @@ def get_hazards(
 def get_vehicles(
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1591,7 +2178,9 @@ def get_vehicles(
 
 
 class VehicleCreate(BaseModel):
+
     vehicle_number: str
+
     driver_name: str = ""
 
 
@@ -1600,6 +2189,7 @@ def create_vehicle(
     data: VehicleCreate,
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1652,8 +2242,11 @@ def create_vehicle(
 
 
 class LocationUpdate(BaseModel):
+
     vehicle_id: int
+
     lat: float
+
     lon: float
 
 
@@ -1662,6 +2255,7 @@ def update_location(
     data: LocationUpdate,
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1714,6 +2308,7 @@ def update_location(
 def get_shipments(
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1741,10 +2336,15 @@ def get_shipments(
 
 
 class ShipmentCreate(BaseModel):
+
     tracking_id: str
+
     origin: str
+
     destination: str
+
     eta_minutes: Optional[int] = None
+
     risk_level: str = "Low"
 
 
@@ -1753,6 +2353,7 @@ def create_shipment(
     data: ShipmentCreate,
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1811,6 +2412,7 @@ def create_shipment(
 
 
 class ShipmentStatusUpdate(BaseModel):
+
     status: str
 
 
@@ -1822,6 +2424,7 @@ def update_shipment_status(
     data: ShipmentStatusUpdate,
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1862,6 +2465,7 @@ def update_shipment_status(
 def get_alerts(
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1889,8 +2493,11 @@ def get_alerts(
 
 
 class AlertCreate(BaseModel):
+
     title: str
+
     message: str
+
     severity: str = "Medium"
 
 
@@ -1899,6 +2506,7 @@ def create_alert(
     data: AlertCreate,
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -1944,9 +2552,11 @@ def create_alert(
 # =========================================================
 
 class EmergencyRerouteRequest(BaseModel):
+
     vehicle_id: int
 
     destination_lat: float
+
     destination_lon: float
 
     destination_name: str = (
@@ -1959,6 +2569,7 @@ def emergency_reroute(
     data: EmergencyRerouteRequest,
     request: Request,
 ):
+
     get_current_user(request)
 
     conn = get_db()
@@ -2107,6 +2718,7 @@ def emergency_reroute(
 async def websocket_endpoint(
     websocket: WebSocket,
 ):
+
     await websocket.accept()
 
     try:
