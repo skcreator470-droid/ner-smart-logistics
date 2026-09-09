@@ -1,0 +1,924 @@
+/* =========================================================
+   NER RESILIENCE INTELLIGENCE
+   Scoped only to the new feature.
+   ========================================================= */
+
+.resilience-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.resilience-panel * {
+  box-sizing: border-box;
+}
+
+.resilience-simulation-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 193, 91, .35);
+  border-radius: 999px;
+  background: rgba(255, 193, 91, .08);
+  color: #ffd27a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  white-space: nowrap;
+}
+
+.resilience-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin-top: 18px;
+}
+
+.resilience-select {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.resilience-select span {
+  color: rgba(230, 241, 255, .68);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.resilience-select select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid rgba(115, 181, 255, .22);
+  border-radius: 10px;
+  background: rgba(5, 20, 38, .88);
+  color: #eef7ff;
+  outline: none;
+}
+
+.resilience-select select:focus {
+  border-color: rgba(115, 181, 255, .58);
+}
+
+.resilience-run-btn {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.resilience-grounding-note {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border: 1px solid rgba(96, 180, 255, .14);
+  border-radius: 10px;
+  background: rgba(8, 31, 55, .42);
+  color: rgba(224, 239, 255, .7);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.resilience-grounding-note strong {
+  color: #dcefff;
+}
+
+.resilience-error {
+  margin-top: 14px;
+}
+
+.resilience-empty {
+  display: grid;
+  gap: 5px;
+  margin-top: 16px;
+  padding: 22px;
+  border: 1px dashed rgba(115, 181, 255, .2);
+  border-radius: 12px;
+  background: rgba(5, 20, 38, .3);
+}
+
+.resilience-empty strong {
+  color: #edf7ff;
+  font-size: 14px;
+}
+
+.resilience-empty span {
+  color: rgba(224, 239, 255, .62);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.resilience-results {
+  margin-top: 18px;
+  min-width: 0;
+}
+
+.resilience-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.resilience-kpi {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid rgba(115, 181, 255, .16);
+  border-radius: 12px;
+  background: rgba(7, 25, 44, .66);
+}
+
+.resilience-kpi span,
+.resilience-card-heading span {
+  display: block;
+  color: rgba(218, 235, 252, .55);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.resilience-kpi strong {
+  display: block;
+  margin-top: 7px;
+  color: #f2f8ff;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.resilience-kpi small {
+  display: block;
+  margin-top: 7px;
+  color: rgba(218, 235, 252, .58);
+  font-size: 11px;
+}
+
+.resilience-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.resilience-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(115, 181, 255, .16);
+  border-radius: 12px;
+  background: rgba(5, 20, 38, .56);
+}
+
+.resilience-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resilience-card-heading > div {
+  min-width: 0;
+}
+
+.resilience-card-heading strong {
+  display: block;
+  margin-top: 6px;
+  color: #edf7ff;
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.resilience-route-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.resilience-route-metrics > div {
+  min-width: 0;
+  padding: 11px;
+  border-radius: 9px;
+  background: rgba(18, 48, 77, .4);
+}
+
+.resilience-route-metrics span,
+.resilience-route-metrics strong {
+  display: block;
+}
+
+.resilience-route-metrics span {
+  color: rgba(218, 235, 252, .55);
+  font-size: 10px;
+}
+
+.resilience-route-metrics strong {
+  margin-top: 5px;
+  color: #eef7ff;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.resilience-explanation {
+  margin: 14px 0 0;
+  color: rgba(228, 240, 252, .72);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.resilience-reasons {
+  display: grid;
+  gap: 7px;
+  margin: 13px 0 0;
+  padding-left: 18px;
+  color: rgba(228, 240, 252, .62);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.resilience-fleet-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.resilience-fleet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(115, 181, 255, .12);
+  border-radius: 9px;
+  background: rgba(18, 48, 77, .3);
+}
+
+.resilience-fleet-row > div {
+  min-width: 0;
+}
+
+.resilience-fleet-row strong,
+.resilience-fleet-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.resilience-fleet-row strong {
+  color: #eef7ff;
+  font-size: 12px;
+}
+
+.resilience-fleet-row small {
+  margin-top: 3px;
+  color: rgba(218, 235, 252, .55);
+  font-size: 10px;
+}
+
+.resilience-no-fleet {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 9px;
+  background: rgba(18, 48, 77, .25);
+  color: rgba(218, 235, 252, .58);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.resilience-data-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(115, 181, 255, .12);
+  border-bottom: 1px solid rgba(115, 181, 255, .12);
+  color: rgba(218, 235, 252, .58);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.resilience-data-strip strong {
+  color: rgba(235, 247, 255, .82);
+}
+
+.resilience-source-note {
+  display: block;
+  margin-top: 10px;
+  color: rgba(218, 235, 252, .42);
+  font-size: 9px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .resilience-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .resilience-two-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .resilience-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .resilience-run-btn {
+    width: 100%;
+  }
+
+  .resilience-summary-grid,
+  .resilience-route-metrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================================================
+   VISUAL INTELLIGENCE LAYER
+   Scoped only to the Resilience Command Center.
+   ========================================================= */
+
+.resilience-visual-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, .75fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.resilience-map-wrap,
+.resilience-intelligence-stack > .resilience-card {
+  border: 1px solid rgba(77, 155, 210, .25);
+  background: linear-gradient(145deg, rgba(7, 28, 55, .96), rgba(4, 19, 39, .96));
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.resilience-map-wrap {
+  min-height: 430px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.resilience-map-head {
+  min-height: 70px;
+  padding: 15px 17px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  border-bottom: 1px solid rgba(77,155,210,.18);
+}
+
+.resilience-map-head > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.resilience-map-head span:first-child,
+.resilience-card-heading span:first-child {
+  color: #74b7df;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .13em;
+}
+
+.resilience-map-head strong {
+  color: #eef8ff;
+  font-size: 14px;
+}
+
+.resilience-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px 13px;
+  color: #a8c9df;
+  font-size: 11px;
+}
+
+.resilience-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.legend-dot.baseline { background: #f59e0b; }
+.legend-dot.simulated { background: #18c7ff; }
+.legend-dot.fleet { background: #22c55e; }
+
+.resilience-map-canvas {
+  height: 355px;
+  background: #dbeafe;
+}
+
+.resilience-map-canvas .leaflet-container {
+  font-family: inherit;
+}
+
+.resilience-map-canvas .leaflet-control-zoom a {
+  color: #12304d;
+}
+
+.resilience-intelligence-stack {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 18px;
+  min-width: 0;
+}
+
+.resilience-intelligence-stack > .resilience-card {
+  padding: 17px;
+}
+
+.resilience-card-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resilience-card-heading > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.resilience-card-heading strong {
+  color: #f1f8ff;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.resilience-impact-chip {
+  border: 1px solid rgba(245,158,11,.35);
+  background: rgba(245,158,11,.09);
+  color: #fbbf24;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.resilience-risk-bars {
+  margin-top: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.risk-bar-row {
+  display: grid;
+  gap: 7px;
+}
+
+.risk-bar-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #9fc0d8;
+  font-size: 12px;
+}
+
+.risk-bar-row b {
+  color: #f0f8ff;
+}
+
+.risk-track {
+  height: 9px;
+  border-radius: 99px;
+  background: rgba(148,163,184,.14);
+  overflow: hidden;
+}
+
+.risk-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #f59e0b;
+  transition: width .45s ease;
+}
+
+.risk-track.simulated-track i {
+  background: #ef4444;
+}
+
+.resilience-weather-metrics {
+  margin-top: 17px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.resilience-weather-metrics div {
+  min-width: 0;
+  padding: 11px 8px;
+  border-radius: 10px;
+  background: rgba(9,44,76,.65);
+  border: 1px solid rgba(76,158,210,.16);
+  text-align: center;
+}
+
+.resilience-weather-metrics strong {
+  display: block;
+  color: #f3f9ff;
+  font-size: 20px;
+}
+
+.resilience-weather-metrics span {
+  display: block;
+  margin-top: 3px;
+  color: #7fa8c5;
+  font-size: 10px;
+}
+
+.resilience-route-choice ul {
+  margin: 15px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 9px;
+}
+
+.resilience-route-choice li {
+  color: #b5d2e5;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 9px;
+  border-radius: 9px;
+  background: rgba(12,51,82,.38);
+}
+
+.resilience-results .resilience-two-column {
+  margin-top: 18px;
+}
+
+@media (max-width: 980px) {
+  .resilience-visual-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resilience-intelligence-stack {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .resilience-map-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .resilience-map-legend {
+    justify-content: flex-start;
+  }
+
+  .resilience-map-canvas {
+    height: 300px;
+  }
+
+  .resilience-intelligence-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .resilience-weather-metrics {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* =========================================================
+   RESILIENCE COMMAND CENTER — VISUAL INTELLIGENCE POLISH
+   Frontend-only. Existing API and backend behaviour unchanged.
+   ========================================================= */
+
+.resilience-results {
+  position: relative;
+}
+
+.resilience-kpi {
+  position: relative;
+  overflow: hidden;
+  min-height: 118px;
+  background: linear-gradient(145deg, rgba(7, 30, 59, .88), rgba(4, 17, 35, .9));
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 14px 35px rgba(0,0,0,.12);
+}
+
+.resilience-kpi::after {
+  content: "";
+  position: absolute;
+  right: -22px;
+  bottom: -30px;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 1px solid rgba(74, 180, 255, .12);
+}
+
+.resilience-kpi strong em {
+  margin-left: 4px;
+  color: #7599b5;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.resilience-kpi-baseline strong { color: #fbbf24; }
+.resilience-kpi-simulated strong { color: #fb7185; }
+.resilience-kpi-resilience strong { color: #35d6bd; }
+.resilience-kpi-fleet strong { color: #62c7ff; }
+
+.risk-delta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(120,170,205,.12);
+  color: #7698b0;
+  font-size: 10px;
+}
+
+.risk-delta-row strong { color: #f7c15a; }
+
+.live-dot,
+.hazard-live-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(22,231,177,.25);
+  background: rgba(22,231,177,.08);
+  color: #57e7c3;
+  border-radius: 999px;
+  padding: 5px 8px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+
+.live-dot::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #27e3ae;
+  box-shadow: 0 0 10px rgba(39,227,174,.8);
+}
+
+.weather-source-mini {
+  display: block;
+  margin-top: 10px;
+  color: #668da9;
+  font-size: 9px;
+}
+
+.resilience-before-after {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-top: 18px;
+}
+
+.resilience-before-after .resilience-card {
+  min-height: 172px;
+  background: linear-gradient(145deg, rgba(6,24,47,.92), rgba(4,16,33,.92));
+}
+
+.resilience-before-card { border-top: 2px solid rgba(245,158,11,.7); }
+.resilience-after-card { border-top: 2px solid rgba(24,199,255,.8); }
+
+.route-state-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.route-state-label > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: rgba(78,145,188,.12);
+  color: #7fb4d3;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.route-state-label small,
+.route-state-label strong {
+  display: block;
+}
+
+.route-state-label small {
+  color: #6c91aa;
+  font-size: 9px;
+  letter-spacing: .11em;
+  font-weight: 800;
+}
+
+.route-state-label strong {
+  margin-top: 4px;
+  color: #eaf6ff;
+  font-size: 14px;
+}
+
+.route-flow {
+  display: grid;
+  grid-template-columns: minmax(65px, 1fr) minmax(70px, 2fr) minmax(65px, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 23px;
+}
+
+.route-flow span {
+  overflow: hidden;
+  color: #a8c7dc;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-flow span:last-child { text-align: right; }
+
+.route-line {
+  height: 3px;
+  border-radius: 99px;
+  background: repeating-linear-gradient(90deg, #f59e0b 0 10px, transparent 10px 16px);
+  box-shadow: 0 0 10px rgba(245,158,11,.18);
+}
+
+.simulated-line {
+  background: linear-gradient(90deg, #18c7ff, #18c7ff);
+  box-shadow: 0 0 12px rgba(24,199,255,.35);
+}
+
+.route-state-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.route-state-metrics b,
+.route-state-metrics span,
+.route-state-metrics em {
+  display: block;
+  font-style: normal;
+}
+
+.route-state-metrics b { color: #f1f8ff; font-size: 13px; }
+.route-state-metrics span { color: #789ab3; font-size: 10px; }
+.route-state-metrics em { color: #f7b94d; font-size: 10px; }
+
+.resilience-route-arrow {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(71,167,224,.2);
+  border-radius: 50%;
+  color: #62cfff;
+  background: rgba(10,48,79,.55);
+  font-weight: 800;
+}
+
+.resilience-intelligence-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.resilience-intelligence-lower .resilience-card {
+  min-height: 280px;
+}
+
+.resilience-card-heading > small {
+  color: #6e93ab;
+  font-size: 9px;
+  letter-spacing: .1em;
+  font-weight: 900;
+}
+
+.scenario-bars {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.scenario-bar-row {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.scenario-bar-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #89abc1;
+  font-size: 10px;
+}
+
+.scenario-bar-row b { color: #dcefff; }
+
+.scenario-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(137,163,181,.11);
+}
+
+.scenario-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #3f789c;
+  transition: width .45s ease;
+}
+
+.scenario-bar-row.selected {
+  padding: 8px 9px;
+  margin: -4px -9px;
+  border-radius: 9px;
+  background: rgba(19,112,157,.1);
+}
+
+.scenario-bar-row.selected > div:first-child { color: #c8edff; }
+.scenario-bar-row.selected .scenario-track i { background: #18c7ff; box-shadow: 0 0 12px rgba(24,199,255,.35); }
+
+.hazard-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.hazard-summary-row div {
+  padding: 13px 9px;
+  border-radius: 10px;
+  background: rgba(9,44,76,.5);
+  border: 1px solid rgba(76,158,210,.13);
+  text-align: center;
+}
+
+.hazard-summary-row strong,
+.hazard-summary-row span { display: block; }
+.hazard-summary-row strong { color: #f1f8ff; font-size: 22px; }
+.hazard-summary-row span { margin-top: 4px; color: #7295ad; font-size: 9px; }
+
+.hazard-note {
+  display: block;
+  margin-top: 15px;
+  color: #668aa2;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.resilience-fleet-row.inside-corridor {
+  border-color: rgba(22,231,177,.22);
+  background: rgba(12,89,76,.17);
+}
+
+.resilience-fleet-row.outside-corridor { opacity: .72; }
+
+.resilience-fleet-row.inside-corridor::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 9px rgba(34,197,94,.65);
+}
+
+.resilience-fleet-row > div:first-of-type { flex: 1; }
+
+@media (max-width: 980px) {
+  .resilience-before-after {
+    grid-template-columns: 1fr;
+  }
+
+  .resilience-route-arrow {
+    transform: rotate(90deg);
+    margin: 0 auto;
+  }
+
+  .resilience-intelligence-lower {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .resilience-before-after .resilience-card { min-height: 155px; }
+  .route-state-metrics { grid-template-columns: 1fr 1fr 1fr; }
+  .resilience-map-head strong { font-size: 12px; }
+}
