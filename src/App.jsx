@@ -21,7 +21,7 @@ import "./App.css";
 import DriverTracker from "./DriverTracker";
 
 // =====================================================
-// PRODUCTION BACKEND — UNCHANGED
+// PRODUCTION BACKEND — DO NOT CHANGE
 // =====================================================
 
 const API_URL =
@@ -102,8 +102,9 @@ function SectionHeader({
 }
 
 function StatusBadge({ status }) {
-  const value = String(status || "")
-    .toLowerCase();
+  const value = String(
+    status || ""
+  ).toLowerCase();
 
   let className = "status-badge";
 
@@ -250,6 +251,29 @@ function App() {
     useRef(null);
 
   // ===================================================
+  // SEARCH PROTECTION
+  // Prevent Nominatim 429
+  // ===================================================
+
+  const searchTimersRef =
+    useRef({
+      start: null,
+      destination: null,
+    });
+
+  const searchControllersRef =
+    useRef({
+      start: null,
+      destination: null,
+    });
+
+  const searchCacheRef =
+    useRef(new Map());
+
+  const lastSearchRequestRef =
+    useRef(0);
+
+  // ===================================================
   // LOGISTICS
   // ===================================================
 
@@ -264,6 +288,12 @@ function App() {
 
   const [message, setMessage] =
     useState("");
+
+  const [backendStatus, setBackendStatus] =
+    useState("Checking...");
+
+  const [backendCheckedAt, setBackendCheckedAt] =
+    useState(null);
 
   // ===================================================
   // AUTH CHECK
@@ -417,10 +447,16 @@ function App() {
     }
 
     if (!response.ok) {
-      throw new Error(
-        data.detail ||
-          "Request failed"
-      );
+      const error =
+        new Error(
+          data.detail ||
+            "Request failed"
+        );
+
+      error.status =
+        response.status;
+
+      throw error;
     }
 
     return data;
@@ -456,11 +492,15 @@ function App() {
         loadHazards(),
         loadNerNews(),
       ]);
+      setBackendStatus("Connected");
+      setBackendCheckedAt(new Date());
     } catch (error) {
       console.error(
         "Dashboard refresh failed:",
         error
       );
+      setBackendStatus("Unavailable");
+      setBackendCheckedAt(new Date());
     }
   }
 
@@ -476,7 +516,9 @@ function App() {
         );
 
       const liveNews =
-        Array.isArray(data.alerts)
+        Array.isArray(
+          data.alerts
+        )
           ? data.alerts.map(
               (alert) => ({
                 title:
@@ -554,6 +596,31 @@ function App() {
         loadedVehicles[0].id
       );
     }
+  }
+
+  // ===================================================
+  // VEHICLE SELECTION
+  // ===================================================
+
+  function handleVehicleChange(
+    value
+  ) {
+    const vehicleId =
+      value
+        ? Number(value)
+        : null;
+
+    // Prevent GPS from continuing
+    // against an old vehicle.
+    if (gpsTracking) {
+      stopGpsTracking();
+    }
+
+    setSelectedVehicleId(
+      vehicleId
+    );
+
+    setGpsError("");
   }
 
   // ===================================================
@@ -638,6 +705,12 @@ function App() {
 
   // ===================================================
   // LOCATION SEARCH
+  // FIXED:
+  // - debounce
+  // - abort previous request
+  // - cache
+  // - minimum request gap
+  // - 429 protection
   // ===================================================
 
   async function searchLocation(
@@ -646,6 +719,26 @@ function App() {
   ) {
     const query =
       value.trim();
+
+    if (
+      searchTimersRef.current[type]
+    ) {
+      clearTimeout(
+        searchTimersRef.current[type]
+      );
+
+      searchTimersRef.current[type] =
+        null;
+    }
+
+    if (
+      searchControllersRef.current[type]
+    ) {
+      searchControllersRef.current[type].abort();
+
+      searchControllersRef.current[type] =
+        null;
+    }
 
     if (!query) {
       if (type === "start") {
@@ -658,46 +751,195 @@ function App() {
     }
 
     if (query.length < 2) {
-      return;
-    }
-
-    try {
-      const data =
-        await apiFetch(
-          `/api/geocode?q=${encodeURIComponent(
-            query
-          )}`
-        );
-
-      const results =
-        Array.isArray(
-          data.results
-        )
-          ? data.results
-          : [];
-
-      if (type === "start") {
-        setStartSuggestions(
-          results
-        );
-      } else {
-        setDestinationSuggestions(
-          results
-        );
-      }
-    } catch (error) {
-      console.error(
-        `Location search failed for ${type}:`,
-        error
-      );
-
       if (type === "start") {
         setStartSuggestions([]);
       } else {
         setDestinationSuggestions([]);
       }
+
+      return;
     }
+
+    const cacheKey =
+      query.toLowerCase();
+
+    const cached =
+      searchCacheRef.current.get(
+        cacheKey
+      );
+
+    if (cached) {
+      if (type === "start") {
+        setStartSuggestions(
+          cached
+        );
+      } else {
+        setDestinationSuggestions(
+          cached
+        );
+      }
+
+      return;
+    }
+
+    // Wait before sending request.
+    // This stops one request per keystroke.
+    searchTimersRef.current[type] =
+      setTimeout(
+        async () => {
+          const now =
+            Date.now();
+
+          const minimumGap =
+            1200;
+
+          const elapsed =
+            now -
+            lastSearchRequestRef.current;
+
+          const waitMore =
+            Math.max(
+              0,
+              minimumGap -
+                elapsed
+            );
+
+          if (waitMore > 0) {
+            await new Promise(
+              (resolve) =>
+                setTimeout(
+                  resolve,
+                  waitMore
+                )
+            );
+          }
+
+          // Re-check cache after waiting.
+          const cachedAfterWait =
+            searchCacheRef.current.get(
+              cacheKey
+            );
+
+          if (cachedAfterWait) {
+            if (type === "start") {
+              setStartSuggestions(
+                cachedAfterWait
+              );
+            } else {
+              setDestinationSuggestions(
+                cachedAfterWait
+              );
+            }
+
+            return;
+          }
+
+          const controller =
+            new AbortController();
+
+          searchControllersRef.current[type] =
+            controller;
+
+          lastSearchRequestRef.current =
+            Date.now();
+
+          try {
+            const data =
+              await apiFetch(
+                `/api/geocode?q=${encodeURIComponent(
+                  query
+                )}`,
+                {
+                  signal:
+                    controller.signal,
+                }
+              );
+
+            const results =
+              Array.isArray(
+                data.results
+              )
+                ? data.results
+                : [];
+
+            searchCacheRef.current.set(
+              cacheKey,
+              results
+            );
+
+            if (type === "start") {
+              setStartSuggestions(
+                results
+              );
+            } else {
+              setDestinationSuggestions(
+                results
+              );
+            }
+          } catch (error) {
+            if (
+              error?.name ===
+              "AbortError"
+            ) {
+              return;
+            }
+
+            console.error(
+              `Location search failed for ${type}:`,
+              error
+            );
+
+            if (
+              error?.status ===
+              429
+            ) {
+              console.warn(
+                "Geocoding rate limited. Search will retry after cooldown."
+              );
+            }
+
+            if (type === "start") {
+              setStartSuggestions([]);
+            } else {
+              setDestinationSuggestions([]);
+            }
+          } finally {
+            if (
+              searchControllersRef.current[type] ===
+              controller
+            ) {
+              searchControllersRef.current[type] =
+                null;
+            }
+          }
+        },
+        800
+      );
   }
+
+  // ===================================================
+  // CLEAN SEARCH REQUESTS
+  // ===================================================
+
+  useEffect(() => {
+    return () => {
+      Object.values(
+        searchTimersRef.current
+      ).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      });
+
+      Object.values(
+        searchControllersRef.current
+      ).forEach((controller) => {
+        if (controller) {
+          controller.abort();
+        }
+      });
+    };
+  }, []);
 
   // ===================================================
   // SELECT LOCATION
@@ -718,19 +960,25 @@ function App() {
       "";
 
     if (type === "start") {
-      setStart(locationName);
-      setStartCoords(coords);
+      setStart(
+        locationName
+      );
+
+      setStartCoords(
+        coords
+      );
+
       setStartSuggestions([]);
     } else {
       setDestination(
         locationName
       );
+
       setDestinationCoords(
         coords
       );
-      setDestinationSuggestions(
-        []
-      );
+
+      setDestinationSuggestions([]);
     }
   }
 
@@ -787,6 +1035,14 @@ function App() {
       return;
     }
 
+    if (!selectedVehicleId) {
+      setRouteError(
+        "Select the vehicle you are travelling with."
+      );
+
+      return;
+    }
+
     setRouteLoading(true);
 
     try {
@@ -805,6 +1061,9 @@ function App() {
       setStartCoords(s);
       setDestinationCoords(d);
 
+      // IMPORTANT:
+      // Backend payload remains unchanged.
+      // Vehicle selection is handled on frontend.
       const data =
         await apiFetch(
           "/api/analyze-route",
@@ -857,6 +1116,19 @@ function App() {
       setSatellite(
         data.satellite
       );
+
+      setMessage(
+        `Route analyzed using ${
+          vehicles.find(
+            (v) =>
+              Number(v.id) ===
+              Number(
+                selectedVehicleId
+              )
+          )?.vehicle_number ||
+          "selected vehicle"
+        }.`
+      );
     } catch (error) {
       setRouteError(
         error.message
@@ -868,6 +1140,7 @@ function App() {
 
   // ===================================================
   // GPS TRACKING
+  // REAL DEVICE LOCATION
   // ===================================================
 
   function startGpsTracking() {
@@ -931,6 +1204,7 @@ function App() {
               }
             );
 
+            // Reload actual backend vehicle position.
             await loadVehicles();
           } catch (error) {
             setGpsError(
@@ -984,6 +1258,23 @@ function App() {
   }
 
   // ===================================================
+  // STOP GPS ON UNMOUNT
+  // ===================================================
+
+  useEffect(() => {
+    return () => {
+      if (
+        watchIdRef.current !==
+        null
+      ) {
+        navigator.geolocation.clearWatch(
+          watchIdRef.current
+        );
+      }
+    };
+  }, []);
+
+  // ===================================================
   // EMERGENCY REROUTE
   // ===================================================
 
@@ -992,29 +1283,18 @@ function App() {
     setRouteError("");
 
     if (!selectedVehicleId) {
-      setRouteError(
-        "Select a vehicle first."
-      );
-
+      setRouteError("Select a vehicle first.");
       return;
     }
 
     if (!destinationCoords) {
-      setRouteError(
-        "Analyze a destination first."
-      );
-
+      setRouteError("Analyze a destination first.");
       return;
     }
 
-    const vehicle =
-      vehicles.find(
-        (v) =>
-          Number(v.id) ===
-          Number(
-            selectedVehicleId
-          )
-      );
+    const vehicle = vehicles.find(
+      (v) => Number(v.id) === Number(selectedVehicleId)
+    );
 
     if (
       vehicle?.lat === null ||
@@ -1025,64 +1305,64 @@ function App() {
       setRouteError(
         "Vehicle has no GPS position. Start GPS tracking first."
       );
+      return;
+    }
 
+    const hasVerifiedHazard = hazards.some((hazard) => {
+      const severity = String(hazard.severity || "").toLowerCase();
+      return [
+        "high",
+        "critical",
+        "severe",
+        "extreme",
+        "danger",
+      ].some((level) => severity.includes(level));
+    });
+
+    if (!hasVerifiedHazard) {
+      setRouteError(
+        "No active high-severity verified hazard is currently available. Emergency backup routing was not triggered."
+      );
       return;
     }
 
     setRerouteLoading(true);
 
     try {
-      const data =
-        await apiFetch(
-          "/api/emergency-reroute",
-          {
-            method: "POST",
+      const data = await apiFetch("/api/emergency-reroute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          vehicle_id: Number(selectedVehicleId),
+          destination_lat: destinationCoords.lat,
+          destination_lon: destinationCoords.lon,
+          destination_name: destination,
+        }),
+      });
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                vehicle_id:
-                  Number(
-                    selectedVehicleId
-                  ),
-
-                destination_lat:
-                  destinationCoords.lat,
-
-                destination_lon:
-                  destinationCoords.lon,
-
-                destination_name:
-                  destination,
-              }),
-          }
+      if (!data.route) {
+        throw new Error(
+          "Backend did not return a valid emergency backup route."
         );
+      }
 
-      setRoute(
-        data.route
-      );
-
-      setRouteCandidates(
-        data.route_candidates ||
-          []
-      );
-
-      setWeather(
-        data.weather
+      setRoute(data.route);
+      setRouteCandidates(data.route_candidates || []);
+      setWeather(data.weather);
+      setRouteSelection(
+        data.route_selection ||
+          data.selection ||
+          "Emergency backup route"
       );
 
       setMessage(
         data.selection ||
-          "Emergency route recalculated."
+          "Verified hazard detected. Backend emergency backup route applied."
       );
     } catch (error) {
-      setRouteError(
-        error.message
-      );
+      setRouteError(error.message);
     } finally {
       setRerouteLoading(false);
     }
@@ -1134,6 +1414,15 @@ function App() {
         ).toLowerCase() ===
         "high"
     ).length;
+
+  const selectedVehicle =
+    vehicles.find(
+      (vehicle) =>
+        Number(vehicle.id) ===
+        Number(
+          selectedVehicleId
+        )
+    );
 
   // ===================================================
   // AUTH LOADING
@@ -1202,6 +1491,7 @@ function App() {
                 <strong>
                   LIVE
                 </strong>
+
                 <span>
                   Fleet Intelligence
                 </span>
@@ -1211,6 +1501,7 @@ function App() {
                 <strong>
                   AI
                 </strong>
+
                 <span>
                   Route Risk Analysis
                 </span>
@@ -1220,6 +1511,7 @@ function App() {
                 <strong>
                   8
                 </strong>
+
                 <span>
                   NER States
                 </span>
@@ -1402,6 +1694,7 @@ function App() {
 
           <div className="system-live">
             <span className="live-dot" />
+
             <span>
               SYSTEM LIVE
             </span>
@@ -1428,13 +1721,32 @@ function App() {
 
       </header>
 
-      <main className="dashboard">
+      <div className="dashboard-layout">
+
+        <aside className="dashboard-sidebar">
+          <nav className="sidebar-nav" aria-label="Dashboard navigation">
+            <a className="sidebar-nav-item active" href="#dashboard-top">⌂<span>Dashboard</span></a>
+            <a className="sidebar-nav-item" href="#route-planner">⌘<span>Route Planner</span></a>
+            <a className="sidebar-nav-item" href="#fleet-control">▣<span>Fleet Control</span></a>
+            <a className="sidebar-nav-item" href="#hazard-monitor">△<span>Hazard Monitor</span></a>
+            <a className="sidebar-nav-item" href="#live-news">▤<span>Live News</span></a>
+            <a className="sidebar-nav-item" href="#logistics-visibility">◇<span>Logistics</span></a>
+            <a className="sidebar-nav-item" href="#system-alerts">♧<span>System Alerts</span></a>
+            <a className="sidebar-nav-item" href="#settings">⚙<span>Settings</span></a>
+          </nav>
+
+          <div className="sidebar-quote">
+            <strong>Stronger Connectivity<br />for a Safer<br />North East</strong>
+          </div>
+        </aside>
+
+        <main className="dashboard" id="dashboard-top">
 
         {/* =================================================
             WELCOME / OVERVIEW
         ================================================= */}
 
-        <section className="dashboard-hero">
+        <section className="dashboard-hero" id="dashboard-overview">
 
           <div>
             <span className="section-eyebrow">
@@ -1545,7 +1857,9 @@ function App() {
             ROUTE PLANNER
         ================================================= */}
 
-        <section className="panel route-panel">
+        <div className="route-command-row">
+
+          <section className="panel route-panel" id="route-planner">
 
           <SectionHeader
             eyebrow="INTELLIGENT ROUTING"
@@ -1553,7 +1867,63 @@ function App() {
             description="Analyze road geometry, weather, satellite intelligence and verified hazard information."
           />
 
+          {/* VEHICLE SELECTION */}
+
+          <div className="search-field">
+
+            <label>
+              TRAVELLING VEHICLE
+            </label>
+
+            <select
+              value={
+                selectedVehicleId || ""
+              }
+              onChange={(e) =>
+                handleVehicleChange(
+                  e.target.value
+                )
+              }
+            >
+
+              <option value="">
+                Select vehicle
+              </option>
+
+              {vehicles.map(
+                (vehicle) => (
+                  <option
+                    key={
+                      vehicle.id
+                    }
+                    value={
+                      vehicle.id
+                    }
+                  >
+                    {vehicle.vehicle_number}
+                    {" — "}
+                    {vehicle.driver_name ||
+                      "Driver"}
+                  </option>
+                )
+              )}
+
+            </select>
+
+            {selectedVehicle && (
+              <small className="muted">
+                Selected vehicle:{" "}
+                {
+                  selectedVehicle.vehicle_number
+                }
+              </small>
+            )}
+
+          </div>
+
           <div className="search-grid">
+
+            {/* START */}
 
             <div className="search-field">
 
@@ -1576,6 +1946,7 @@ function App() {
                   );
                 }}
                 placeholder="Guwahati"
+                autoComplete="off"
               />
 
               {startSuggestions.length >
@@ -1589,7 +1960,9 @@ function App() {
                     ) => (
                       <button
                         type="button"
-                        key={index}
+                        key={
+                          `${item.lat}-${item.lon}-${index}`
+                        }
                         onClick={() =>
                           selectLocation(
                             item,
@@ -1597,6 +1970,7 @@ function App() {
                           )
                         }
                       >
+
                         {(() => {
                           const displayName =
                             item.name ||
@@ -1619,12 +1993,15 @@ function App() {
                             .filter(
                               Boolean
                             )
-                            .join(", ");
+                            .join(
+                              ", "
+                            );
 
                           return meta
                             ? `${displayName} — ${meta}`
                             : displayName;
                         })()}
+
                       </button>
                     )
                   )}
@@ -1637,6 +2014,8 @@ function App() {
             <div className="route-connector">
               <span />
             </div>
+
+            {/* DESTINATION */}
 
             <div className="search-field">
 
@@ -1666,6 +2045,7 @@ function App() {
                   );
                 }}
                 placeholder="Shillong"
+                autoComplete="off"
               />
 
               {destinationSuggestions.length >
@@ -1679,7 +2059,9 @@ function App() {
                     ) => (
                       <button
                         type="button"
-                        key={index}
+                        key={
+                          `${item.lat}-${item.lon}-${index}`
+                        }
                         onClick={() =>
                           selectLocation(
                             item,
@@ -1687,6 +2069,7 @@ function App() {
                           )
                         }
                       >
+
                         {(() => {
                           const displayName =
                             item.name ||
@@ -1709,12 +2092,15 @@ function App() {
                             .filter(
                               Boolean
                             )
-                            .join(", ");
+                            .join(
+                              ", "
+                            );
 
                           return meta
                             ? `${displayName} — ${meta}`
                             : displayName;
                         })()}
+
                       </button>
                     )
                   )}
@@ -1723,6 +2109,8 @@ function App() {
               )}
 
             </div>
+
+            {/* ANALYZE */}
 
             <button
               className="primary-btn route-btn"
@@ -1752,13 +2140,34 @@ function App() {
             </div>
           )}
 
-        </section>
+          </section>
+
+          <aside className="panel quick-actions-panel">
+            <h2>Quick Actions</h2>
+            <button
+              className={gpsTracking ? "quick-action gps-active" : "quick-action gps-action"}
+              onClick={gpsTracking ? stopGpsTracking : startGpsTracking}
+            >
+              <span className="quick-action-icon">⌖</span>
+              <span>{gpsTracking ? "Stop GPS Tracking" : "Start GPS Tracking"}</span>
+            </button>
+            <button
+              className="quick-action reroute-action"
+              onClick={emergencyReroute}
+              disabled={rerouteLoading}
+            >
+              <span className="quick-action-icon">△</span>
+              <span>{rerouteLoading ? "Rerouting..." : "Emergency Reroute"}</span>
+            </button>
+          </aside>
+
+        </div>
 
         {/* =================================================
             LIVE MAP
         ================================================= */}
 
-        <section className="panel map-panel">
+        <section className="panel map-panel" id="live-map">
 
           <SectionHeader
             eyebrow="GEOSPATIAL OPERATIONS"
@@ -1880,6 +2289,8 @@ function App() {
                 </>
               )}
 
+              {/* REAL BACKEND VEHICLE POSITIONS */}
+
               {fleetMarkers.map(
                 (vehicle) => (
                   <Marker
@@ -1887,8 +2298,12 @@ function App() {
                       vehicle.id
                     }
                     position={[
-                      vehicle.lat,
-                      vehicle.lon,
+                      Number(
+                        vehicle.lat
+                      ),
+                      Number(
+                        vehicle.lon
+                      ),
                     ]}
                   >
                     <Popup>
@@ -1903,14 +2318,16 @@ function App() {
 
                       Driver:{" "}
                       {
-                        vehicle.driver_name
+                        vehicle.driver_name ||
+                        "Not available"
                       }
 
                       <br />
 
                       Status:{" "}
                       {
-                        vehicle.status
+                        vehicle.status ||
+                        "Unknown"
                       }
 
                       <br />
@@ -1924,6 +2341,19 @@ function App() {
                         vehicle.lon
                       ).toFixed(5)}
 
+                      <br />
+
+                      {Number(
+                        vehicle.id
+                      ) ===
+                        Number(
+                          selectedVehicleId
+                        ) && (
+                        <strong>
+                          LIVE TRACKED VEHICLE
+                        </strong>
+                      )}
+
                     </Popup>
                   </Marker>
                 )
@@ -1932,11 +2362,15 @@ function App() {
             </MapContainer>
 
             <div className="map-overlay-status">
+
               <span className="live-dot" />
+
               LIVE GPS
+
               <strong>
                 {fleetMarkers.length}
               </strong>
+
             </div>
 
           </div>
@@ -1947,7 +2381,7 @@ function App() {
             HAZARD MONITOR
         ================================================= */}
 
-        <section className="panel hazard-panel">
+        <section className="panel hazard-panel" id="hazard-monitor">
 
           <SectionHeader
             eyebrow="DISASTER INTELLIGENCE"
@@ -1986,7 +2420,8 @@ function App() {
             </div>
           )}
 
-          {hazards.length === 0 ? (
+          {hazards.length ===
+          0 ? (
             <div className="empty-state">
 
               <div className="empty-icon">
@@ -2141,6 +2576,7 @@ function App() {
               </div>
 
               <div className="decision-stat">
+
                 <span>
                   HAZARD ALERTS
                 </span>
@@ -2151,9 +2587,11 @@ function App() {
                       ?.length || 0
                   }
                 </strong>
+
               </div>
 
               <div className="decision-stat">
+
                 <span>
                   ALTERNATE ROUTES
                 </span>
@@ -2163,6 +2601,7 @@ function App() {
                     routeCandidates.length
                   }
                 </strong>
+
               </div>
 
             </div>
@@ -2174,7 +2613,7 @@ function App() {
             WEATHER + SATELLITE
         ================================================= */}
 
-        <section className="two-column">
+        <section className="two-column weather-satellite-grid">
 
           <div className="panel">
 
@@ -2323,7 +2762,8 @@ function App() {
             }
           />
 
-          {nerNews.length === 0 ? (
+          {nerNews.length ===
+          0 ? (
             <div className="empty-state">
 
               <div className="empty-icon">
@@ -2419,16 +2859,16 @@ function App() {
             FLEET + LOGISTICS
         ================================================= */}
 
-        <section className="two-column">
+        <section className="two-column fleet-logistics-grid">
 
           {/* FLEET */}
 
-          <div className="panel">
+          <div className="panel fleet-panel" id="fleet-control">
 
             <SectionHeader
               eyebrow="VEHICLE OPERATIONS"
               title="Fleet Control"
-              description="Manage the active vehicle and driver tracking."
+              description="Choose the vehicle and manage real device GPS tracking."
             />
 
             <label className="select-label">
@@ -2437,14 +2877,11 @@ function App() {
 
               <select
                 value={
-                  selectedVehicleId ||
-                  ""
+                  selectedVehicleId || ""
                 }
                 onChange={(e) =>
-                  setSelectedVehicleId(
-                    Number(
-                      e.target.value
-                    )
+                  handleVehicleChange(
+                    e.target.value
                   )
                 }
               >
@@ -2474,6 +2911,17 @@ function App() {
 
             </label>
 
+            {selectedVehicle && (
+              <div className="success-box">
+                Tracking vehicle:{" "}
+                <strong>
+                  {
+                    selectedVehicle.vehicle_number
+                  }
+                </strong>
+              </div>
+            )}
+
             <DriverTracker
               vehicleId={
                 Number(
@@ -2481,13 +2929,7 @@ function App() {
                 )
               }
               vehicleNumber={
-                vehicles.find(
-                  (v) =>
-                    Number(v.id) ===
-                    Number(
-                      selectedVehicleId
-                    )
-                )?.vehicle_number ||
+                selectedVehicle?.vehicle_number ||
                 "NER-TRUCK-01"
               }
             />
@@ -2522,7 +2964,8 @@ function App() {
 
                       <small>
                         {
-                          vehicle.driver_name
+                          vehicle.driver_name ||
+                          "Driver not available"
                         }
                       </small>
 
@@ -2544,7 +2987,7 @@ function App() {
 
           {/* LOGISTICS */}
 
-          <div className="panel">
+          <div className="panel logistics-panel" id="logistics-visibility">
 
             <SectionHeader
               eyebrow="SUPPLY CHAIN"
@@ -2616,7 +3059,7 @@ function App() {
             SYSTEM ALERTS
         ================================================= */}
 
-        <section className="panel">
+        <section className="panel" id="system-alerts">
 
           <SectionHeader
             eyebrow="PLATFORM MONITORING"
@@ -2690,9 +3133,59 @@ function App() {
             FOOTER
         ================================================= */}
 
-        <footer className="footer">
+        <section className="panel settings-panel" id="settings">
+
+          <SectionHeader
+            eyebrow="PLATFORM SETTINGS"
+            title="System Settings"
+            description="Connected backend and live data-service status."
+          />
+
+          <div className="settings-grid">
+
+            <div className="setting-card">
+              <span>BACKEND API</span>
+              <strong>{API_URL}</strong>
+              <small>
+                Production FastAPI service used by this dashboard.
+              </small>
+            </div>
+
+            <div className="setting-card">
+              <span>BACKEND STATUS</span>
+              <strong
+                className={
+                  backendStatus === "Connected"
+                    ? "setting-online"
+                    : backendStatus === "Unavailable"
+                      ? "setting-offline"
+                      : "setting-checking"
+                }
+              >
+                {backendStatus}
+              </strong>
+              <small>
+                {backendCheckedAt
+                  ? `Last checked ${backendCheckedAt.toLocaleTimeString()}`
+                  : "Waiting for first dashboard refresh."}
+              </small>
+            </div>
+
+            <div className="setting-card">
+              <span>DATA MODE</span>
+              <strong>REAL DATA</strong>
+              <small>
+                Vehicles, hazards, alerts, shipments, GPS and route results come from the connected backend/services.
+              </small>
+            </div>
+
+          </div>
+        </section>
+
+        <footer className="footer" id="dashboard-footer">
 
           <div>
+
             <strong>
               NER SMART LOGISTICS
             </strong>
@@ -2702,9 +3195,11 @@ function App() {
               platform for the North
               Eastern Region.
             </span>
+
           </div>
 
           <div>
+
             <span>
               OpenStreetMap / OSRM /
               Open-Meteo / Copernicus
@@ -2717,11 +3212,15 @@ function App() {
               not a guaranteed road-closure
               or safety authority.
             </small>
+
           </div>
 
         </footer>
 
-      </main>
+        </main>
+
+      </div>
+
     </div>
   );
 }
