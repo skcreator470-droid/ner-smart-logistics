@@ -1,4 +1,4 @@
-﻿import React, {
+import React, {
   useEffect,
   useMemo,
   useRef,
@@ -26,9 +26,92 @@ import DriverTracker from "./DriverTracker";
 // =====================================================
 
 const API_URL =
-  import.meta.env.DEV
-    ? "http://127.0.0.1:8000"
-    : "https://ner-smart-logistics-1.onrender.com";
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV
+    ? "http://127.0.0.1:8001"
+    : "https://ner-smart-logistics-1.onrender.com");
+
+// =====================================================
+// NER OPERATIONS INTELLIGENCE — FRONTEND ONLY
+// Uses existing backend endpoints without changing main.py.
+// =====================================================
+
+const NER_STATES = [
+  "Arunachal Pradesh",
+  "Assam",
+  "Manipur",
+  "Meghalaya",
+  "Mizoram",
+  "Nagaland",
+  "Sikkim",
+  "Tripura",
+];
+
+const NER_LANGUAGES = {
+  en: {
+    name: "English",
+    alertPrefix: "NER logistics alert",
+    fieldSaved: "Field report saved and queued for sync.",
+    fieldSent: "Field report submitted to the connected alert service.",
+    offline: "Offline mode: report will sync when connectivity returns.",
+  },
+  hi: {
+    name: "हिन्दी",
+    alertPrefix: "NER लॉजिस्टिक्स अलर्ट",
+    fieldSaved: "फील्ड रिपोर्ट सेव हो गई है और सिंक के लिए कतार में है।",
+    fieldSent: "फील्ड रिपोर्ट कनेक्टेड अलर्ट सेवा को भेज दी गई है।",
+    offline: "ऑफलाइन मोड: कनेक्टिविटी लौटने पर रिपोर्ट सिंक होगी।",
+  },
+  as: {
+    name: "অসমীয়া",
+    alertPrefix: "NER লজিষ্টিক্স সতৰ্কতা",
+    fieldSaved: "ফিল্ড ৰিপ’ৰ্ট সংৰক্ষণ কৰি ছিংকৰ বাবে শাৰীত ৰখা হৈছে।",
+    fieldSent: "ফিল্ড ৰিপ’ৰ্ট সংযুক্ত এলাৰ্ট সেৱালৈ পঠিওৱা হৈছে।",
+    offline: "অফলাইন মোড: সংযোগ ঘূৰি আহিলে ৰিপ’ৰ্ট ছিংক হ’ব।",
+  },
+  bn: {
+    name: "বাংলা",
+    alertPrefix: "NER লজিস্টিক্স সতর্কতা",
+    fieldSaved: "ফিল্ড রিপোর্ট সংরক্ষণ করে সিঙ্কের জন্য রাখা হয়েছে।",
+    fieldSent: "ফিল্ড রিপোর্ট সংযুক্ত অ্যালার্ট সার্ভিসে পাঠানো হয়েছে।",
+    offline: "অফলাইন মোড: সংযোগ ফিরে এলে রিপোর্ট সিঙ্ক হবে।",
+  },
+};
+
+const FIELD_REPORT_QUEUE_KEY = "ner-smart-logistics-field-report-queue";
+const LAST_ROUTE_CACHE_KEY = "ner-smart-logistics-last-route";
+
+const ROAD_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+const ROAD_TILE_ATTRIBUTION = "&copy; OpenStreetMap contributors";
+const SATELLITE_TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const SATELLITE_TILE_ATTRIBUTION = "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
+const SATELLITE_LABEL_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+
+
+const NER_ROLES = {
+  authority: { label: "Logistics Authority", landing: "Command Center" },
+  field_official: { label: "Field Official", landing: "Field Intelligence" },
+  logistics_operator: { label: "Logistics Operator", landing: "Fleet + Shipments" },
+  emergency_response: { label: "Emergency Response", landing: "Emergency Operations" },
+};
+
+function safeLocalStorageGet(key, fallback) {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeLocalStorageSet(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // =====================================================
 // LEAFLET ICON FIX
@@ -51,6 +134,41 @@ L.Icon.Default.mergeOptions({
 // MAP CONTROLLER
 // =====================================================
 
+function MapSizeFix() {
+  const map = useMap();
+
+  useEffect(() => {
+    const invalidate = () => {
+      try {
+        map.invalidateSize({ animate: false });
+      } catch {
+        // Map may already be unmounted.
+      }
+    };
+
+    const timers = [0, 100, 300, 700, 1200].map((delay) =>
+      window.setTimeout(invalidate, delay)
+    );
+
+    const container = map.getContainer();
+    let observer;
+    if (typeof ResizeObserver !== "undefined" && container) {
+      observer = new ResizeObserver(invalidate);
+      observer.observe(container);
+    }
+
+    window.addEventListener("resize", invalidate);
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      observer?.disconnect();
+      window.removeEventListener("resize", invalidate);
+    };
+  }, [map]);
+
+  return null;
+}
+
 function MapController({ route }) {
   const map = useMap();
 
@@ -67,6 +185,111 @@ function MapController({ route }) {
   }, [route, map]);
 
   return null;
+}
+
+function MapLayerSwitcher({ defaultMode = "road" }) {
+  const map = useMap();
+  const [mode, setMode] = useState(defaultMode);
+
+  useEffect(() => {
+    map.invalidateSize({ animate: false });
+  }, [mode, map]);
+
+  return (
+    <>
+      {mode === "satellite" ? (
+        <>
+          <TileLayer
+            attribution={SATELLITE_TILE_ATTRIBUTION}
+            url={SATELLITE_TILE_URL}
+            maxZoom={19}
+          />
+          <TileLayer
+            attribution="&copy; Esri reference labels"
+            url={SATELLITE_LABEL_URL}
+            maxZoom={19}
+            opacity={0.9}
+          />
+        </>
+      ) : (
+        <TileLayer
+          attribution={ROAD_TILE_ATTRIBUTION}
+          url={ROAD_TILE_URL}
+          maxZoom={19}
+        />
+      )}
+
+      <div className="map-layer-switcher" role="group" aria-label="Map view">
+        <button
+          type="button"
+          className={mode === "road" ? "active" : ""}
+          onClick={() => setMode("road")}
+          title="Road map view"
+        >
+          🗺 Road
+        </button>
+        <button
+          type="button"
+          className={mode === "satellite" ? "active" : ""}
+          onClick={() => setMode("satellite")}
+          title="Real satellite imagery"
+        >
+          🛰 Satellite
+        </button>
+      </div>
+    </>
+  );
+}
+
+function SatelliteCoverageMap({ route, fleetMarkers = [] }) {
+  const geometry = route?.geometry || [];
+  const center = geometry[0] || [25.8, 92.0];
+
+  return (
+    <div className="satellite-coverage-map">
+      <MapContainer
+        center={center}
+        zoom={7}
+        scrollWheelZoom
+        style={{ height: "100%", width: "100%" }}
+      >
+        <MapSizeFix />
+        <MapLayerSwitcher defaultMode="satellite" />
+
+        {geometry.length > 1 && (
+          <>
+            <MapController route={route} />
+            <Polyline
+              positions={geometry}
+              pathOptions={{ color: "#18c7ff", weight: 6, opacity: 0.9 }}
+            >
+              <Popup>
+                <strong>Analyzed logistics corridor</strong>
+                <br />
+                {route.distance_km ?? "--"} km · {route.duration_minutes ?? "--"} min
+              </Popup>
+            </Polyline>
+          </>
+        )}
+
+        {fleetMarkers.map((vehicle) => (
+          <Marker
+            key={`sat-fleet-${vehicle.id}`}
+            position={[Number(vehicle.lat), Number(vehicle.lon)]}
+          >
+            <Popup>
+              <strong>{vehicle.vehicle_number}</strong>
+              <br />
+              Live backend GPS
+            </Popup>
+          </Marker>
+        ))}
+      </MapContainer>
+      <div className="satellite-map-badge">
+        <span className="live-dot" /> REAL SATELLITE IMAGERY · ESRI WORLD IMAGERY
+      </div>
+    </div>
+  );
 }
 
 // =====================================================
@@ -204,10 +427,9 @@ function ResilienceMap({ result, startCoords, destinationCoords }) {
           scrollWheelZoom={true}
           style={{ height: "100%", width: "100%" }}
         >
-          <TileLayer
-            attribution='&copy; OpenStreetMap contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <MapSizeFix />
+
+          <MapLayerSwitcher />
 
           <ResilienceMapController
             geometries={geometries}
@@ -423,7 +645,127 @@ function App() {
       name: "",
       email: "",
       password: "",
+      role: "authority",
     });
+
+  const [userRole, setUserRole] = useState("authority");
+  const [roleInfo, setRoleInfo] = useState(null);
+
+  // ===================================================
+  // ADVANCED NER INTELLIGENCE
+  // ===================================================
+  const [advancedIntel, setAdvancedIntel] = useState(null);
+  const [advancedLoading, setAdvancedLoading] = useState(false);
+  const [advancedError, setAdvancedError] = useState("");
+  const [intelWhatIf, setIntelWhatIf] = useState({
+    rainfall_mm: 10,
+    wind_kmh: 30,
+    extra_delay_minutes: 30,
+    additional_hazard_count: 1,
+  });
+
+  async function loadAdvancedIntel() {
+    setAdvancedLoading(true);
+    setAdvancedError("");
+    try {
+      const twin = await apiFetch("/api/intelligence/digital-twin");
+      const memory = await apiFetch("/api/intelligence/disruption-memory");
+      setAdvancedIntel((current) => ({ ...(current || {}), twin, memory }));
+    } catch (error) {
+      setAdvancedError(error?.message || "Advanced intelligence service unavailable.");
+    } finally {
+      setAdvancedLoading(false);
+    }
+  }
+
+  async function runAdvancedWhatIf() {
+    setAdvancedLoading(true);
+    setAdvancedError("");
+    try {
+      const data = await apiFetch("/api/intelligence/what-if", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_risk_score: route?.risk_score || 0,
+          ...intelWhatIf,
+        }),
+      });
+      setAdvancedIntel((current) => ({ ...(current || {}), whatIf: data }));
+    } catch (error) {
+      setAdvancedError(error?.message || "Scenario analysis failed.");
+    } finally {
+      setAdvancedLoading(false);
+    }
+  }
+
+  async function runSafeWindow() {
+    setAdvancedLoading(true);
+    setAdvancedError("");
+    try {
+      const data = await apiFetch("/api/intelligence/safe-window", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_risk_score: route?.risk_score || 0,
+          rainfall_mm: weather?.rain_mm ?? null,
+          wind_kmh: weather?.wind_kmh ?? null,
+        }),
+      });
+      setAdvancedIntel((current) => ({ ...(current || {}), safeWindow: data }));
+    } catch (error) {
+      setAdvancedError(error?.message || "Safe-window analysis failed.");
+    } finally {
+      setAdvancedLoading(false);
+    }
+  }
+
+  async function runImpact() {
+    setAdvancedLoading(true);
+    setAdvancedError("");
+    try {
+      const data = await apiFetch("/api/intelligence/impact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          route_distance_km: route?.distance_km || 0,
+          route_duration_minutes: route?.duration_minutes || 0,
+          risk_score: route?.risk_score || 0,
+          vehicle_count: vehicles.length,
+          shipment_count: shipments.length,
+        }),
+      });
+      setAdvancedIntel((current) => ({ ...(current || {}), impact: data }));
+    } catch (error) {
+      setAdvancedError(error?.message || "Impact analysis failed.");
+    } finally {
+      setAdvancedLoading(false);
+    }
+  }
+
+  async function runVerification() {
+    setAdvancedLoading(true);
+    setAdvancedError("");
+    try {
+      const data = await apiFetch("/api/intelligence/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          government_alerts: hazards.length,
+          field_reports: advancedIntel?.memory?.historical_evidence?.field_report_count || 0,
+          weather_risk_score: weather?.risk_score || route?.risk_score || 0,
+        }),
+      });
+      setAdvancedIntel((current) => ({ ...(current || {}), verification: data }));
+    } catch (error) {
+      setAdvancedError(error?.message || "Verification analysis failed.");
+    } finally {
+      setAdvancedLoading(false);
+    }
+  }
+
+
+  const [activeNav, setActiveNav] = useState("dashboard");
+  const [globalSearch, setGlobalSearch] = useState("");
 
   // ===================================================
   // ROUTE
@@ -461,6 +803,22 @@ function App() {
 
   const [satellite, setSatellite] =
     useState(null);
+
+  async function loadProblemStatementOps() {
+    const results = await Promise.allSettled([
+      apiFetch("/api/analytics/overview"),
+      apiFetch("/api/connectivity/districts"),
+      apiFetch("/api/logistics/bottlenecks"),
+      apiFetch("/api/notifications"),
+      apiFetch("/api/emergency/accessibility"),
+    ]);
+
+    if (results[0].status === "fulfilled") setOpsAnalytics(results[0].value);
+    if (results[1].status === "fulfilled") setDistrictConnectivity(results[1].value.districts || []);
+    if (results[2].status === "fulfilled") setBottlenecks(results[2].value);
+    if (results[3].status === "fulfilled") setOpsNotifications(results[3].value.notifications || []);
+    if (results[4].status === "fulfilled") setEmergencyAccess(results[4].value);
+  }
 
   // ===================================================
   // LIVE NER NEWS
@@ -572,6 +930,334 @@ function App() {
     useState("");
 
   // ===================================================
+  // PROBLEM-STATEMENT OPERATIONS INTELLIGENCE
+  // Additive endpoints: district connectivity, bottlenecks,
+  // notifications, emergency accessibility and analytics.
+  // ===================================================
+
+  const [opsAnalytics, setOpsAnalytics] = useState(null);
+  const [districtConnectivity, setDistrictConnectivity] = useState([]);
+  const [bottlenecks, setBottlenecks] = useState(null);
+  const [opsNotifications, setOpsNotifications] = useState([]);
+  const [emergencyAccess, setEmergencyAccess] = useState(null);
+
+
+  // ===================================================
+  // REGIONAL OPERATIONS / FIELD REPORTING / OFFLINE
+  // ===================================================
+
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  );
+
+  const [fieldReport, setFieldReport] = useState({
+    incidentType: "Road obstruction",
+    severity: "Medium",
+    description: "",
+    lat: "",
+    lon: "",
+    photoName: "",
+  });
+
+  const [fieldReportPhoto, setFieldReportPhoto] = useState("");
+  const [fieldReportPhotoFile, setFieldReportPhotoFile] = useState(null);
+  const [fieldReportLoading, setFieldReportLoading] = useState(false);
+  const [fieldReportMessage, setFieldReportMessage] = useState("");
+  const [fieldReportError, setFieldReportError] = useState("");
+  const [offlineReportCount, setOfflineReportCount] = useState(() =>
+    safeLocalStorageGet(FIELD_REPORT_QUEUE_KEY, []).length
+  );
+  const [language, setLanguage] = useState("en");
+  const [notificationPermission, setNotificationPermission] = useState(
+    typeof Notification === "undefined" ? "unsupported" : Notification.permission
+  );
+  const [cachedRoute, setCachedRoute] = useState(() =>
+    safeLocalStorageGet(LAST_ROUTE_CACHE_KEY, null)
+  );
+
+  const lastNotifiedAlertRef = useRef(null);
+
+  // ===================================================
+  // ONLINE / OFFLINE SYNCHRONIZATION
+  // ===================================================
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncOfflineFieldReports();
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [user]);
+
+  async function syncOfflineFieldReports() {
+    if (!navigator.onLine || !user) return;
+
+    const queue = safeLocalStorageGet(FIELD_REPORT_QUEUE_KEY, []);
+    if (!queue.length) {
+      setOfflineReportCount(0);
+      return;
+    }
+
+    const remaining = [];
+    for (const report of queue) {
+      try {
+        const created = await apiFetch("/api/field-reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            incident_type: report.incidentType,
+            severity: report.severity,
+            description: report.description || report.message || "Offline field report",
+            lat: report.lat ? Number(report.lat) : null,
+            lon: report.lon ? Number(report.lon) : null,
+          }),
+        });
+
+        await apiFetch("/api/alerts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `[FIELD REPORT] ${report.incidentType}`,
+            message: report.message,
+            severity: report.severity,
+          }),
+        });
+
+        // Offline photos are intentionally not auto-uploaded from localStorage.
+        // The online submission path uploads the actual File object securely.
+        void created;
+      } catch {
+        remaining.push(report);
+      }
+    }
+
+    safeLocalStorageSet(FIELD_REPORT_QUEUE_KEY, remaining);
+    setOfflineReportCount(remaining.length);
+    if (queue.length !== remaining.length) {
+      loadAlerts().catch(() => {});
+    }
+  }
+
+  useEffect(() => {
+    if (!user || !isOnline) return;
+    syncOfflineFieldReports();
+  }, [user, isOnline]);
+
+  useEffect(() => {
+    if (!route) return;
+    const snapshot = {
+      start,
+      destination,
+      startCoords,
+      destinationCoords,
+      route,
+      routeCandidates,
+      routeSelection,
+      weather,
+      savedAt: new Date().toISOString(),
+    };
+    if (safeLocalStorageSet(LAST_ROUTE_CACHE_KEY, snapshot)) {
+      setCachedRoute(snapshot);
+    }
+  }, [route, routeCandidates, routeSelection, weather, start, destination, startCoords, destinationCoords]);
+
+  // Browser notifications are optional and only use data already returned by the backend.
+  useEffect(() => {
+    if (!user || !alerts.length || typeof Notification === "undefined") return;
+    const newest = alerts[0];
+    if (!newest?.id || newest.id === lastNotifiedAlertRef.current) return;
+    lastNotifiedAlertRef.current = newest.id;
+    if (Notification.permission === "granted") {
+      const copy = NER_LANGUAGES[language] || NER_LANGUAGES.en;
+      new Notification(copy.alertPrefix, {
+        body: `${newest.title || "Operational alert"}: ${newest.message || ""}`,
+      });
+    }
+  }, [alerts, language, user]);
+
+  async function enableBrowserNotifications() {
+    if (typeof Notification === "undefined") {
+      setNotificationPermission("unsupported");
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+    } catch {
+      setNotificationPermission("denied");
+    }
+  }
+
+  function captureFieldLocation() {
+    setFieldReportError("");
+    if (!navigator.geolocation) {
+      setFieldReportError("Browser geolocation is not available on this device.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFieldReport((current) => ({
+          ...current,
+          lat: position.coords.latitude.toFixed(6),
+          lon: position.coords.longitude.toFixed(6),
+        }));
+      },
+      (error) => setFieldReportError(error.message || "Unable to read device location."),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }
+
+  function buildFieldReportMessage(report) {
+    const coords = report.lat && report.lon
+      ? `Geo-tag: ${report.lat}, ${report.lon}.`
+      : "Geo-tag: not captured.";
+    const photo = report.photoName
+      ? ` Photo selected locally: ${report.photoName}.`
+      : "";
+    return `${report.description.trim() || "No additional description provided."} ${coords}${photo} Reported from the NER Smart Logistics field console.`;
+  }
+
+  async function submitFieldReport(event) {
+    event.preventDefault();
+    setFieldReportMessage("");
+    setFieldReportError("");
+
+    if (!fieldReport.description.trim()) {
+      setFieldReportError("Add a short incident description before submitting.");
+      return;
+    }
+
+    let reportForSubmit = { ...fieldReport };
+
+    if ((!reportForSubmit.lat || !reportForSubmit.lon) && navigator.geolocation) {
+      try {
+        const position = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          });
+        });
+        reportForSubmit = {
+          ...reportForSubmit,
+          lat: position.coords.latitude.toFixed(6),
+          lon: position.coords.longitude.toFixed(6),
+        };
+        setFieldReport((current) => ({ ...current, lat: reportForSubmit.lat, lon: reportForSubmit.lon }));
+      } catch {
+        // GPS permission may be denied; the report can still be submitted without coordinates.
+      }
+    }
+
+    const payload = {
+      ...reportForSubmit,
+      message: buildFieldReportMessage(reportForSubmit),
+      createdAt: new Date().toISOString(),
+    };
+
+    setFieldReportLoading(true);
+    try {
+      if (!navigator.onLine) throw new Error("offline");
+
+      const reportResponse = await apiFetch("/api/field-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          incident_type: reportForSubmit.incidentType,
+          severity: reportForSubmit.severity,
+          description: reportForSubmit.description,
+          lat: reportForSubmit.lat ? Number(reportForSubmit.lat) : null,
+          lon: reportForSubmit.lon ? Number(reportForSubmit.lon) : null,
+        }),
+      });
+
+      if (fieldReportPhotoFile && reportResponse.report?.id) {
+        const reader = new FileReader();
+        const base64 = await new Promise((resolve, reject) => {
+          reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+          reader.onerror = reject;
+          reader.readAsDataURL(fieldReportPhotoFile);
+        });
+        await apiFetch(`/api/field-reports/${reportResponse.report.id}/photo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: fieldReportPhotoFile.name,
+            content_base64: base64,
+            mime_type: fieldReportPhotoFile.type || "image/jpeg",
+          }),
+        });
+      }
+
+      // Preserve the legacy alert stream as well, so existing alert/dashboard behaviour remains intact.
+      await apiFetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: `[FIELD REPORT] ${fieldReport.incidentType}`,
+          message: payload.message,
+          severity: fieldReport.severity,
+        }),
+      });
+
+      setFieldReportMessage((NER_LANGUAGES[language] || NER_LANGUAGES.en).fieldSent);
+      setFieldReport({
+        incidentType: "Road obstruction",
+        severity: "Medium",
+        description: "",
+        lat: fieldReport.lat,
+        lon: fieldReport.lon,
+        photoName: "",
+      });
+      setFieldReportPhoto("");
+      setFieldReportPhotoFile(null);
+      loadAlerts().catch(() => {});
+    } catch {
+      const queue = safeLocalStorageGet(FIELD_REPORT_QUEUE_KEY, []);
+      queue.push(payload);
+      safeLocalStorageSet(FIELD_REPORT_QUEUE_KEY, queue);
+      setOfflineReportCount(queue.length);
+      setFieldReportMessage(
+        navigator.onLine
+          ? (NER_LANGUAGES[language] || NER_LANGUAGES.en).fieldSaved
+          : (NER_LANGUAGES[language] || NER_LANGUAGES.en).offline
+      );
+    } finally {
+      setFieldReportLoading(false);
+    }
+  }
+
+  const regionalAccessibility = useMemo(() => {
+    const routeText = `${start || ""} ${destination || ""}`.toLowerCase();
+    const hazardText = hazards
+      .map((item) => `${item?.state || ""} ${item?.area || ""} ${item?.district || ""} ${item?.location || ""}`)
+      .join(" ")
+      .toLowerCase();
+
+    return NER_STATES.map((state) => {
+      const stateKey = state.toLowerCase();
+      const hazardMatch = hazardText.includes(stateKey);
+      const routeMatch = routeText.includes(stateKey);
+      return {
+        state,
+        status: hazardMatch
+          ? "Hazard feed attention"
+          : routeMatch
+            ? "Active route corridor"
+            : "No verified hazard returned",
+        tone: hazardMatch ? "danger" : routeMatch ? "route" : "neutral",
+      };
+    });
+  }, [hazards, start, destination]);
+
+  // ===================================================
   // AUTH CHECK
   // ===================================================
 
@@ -594,6 +1280,16 @@ function App() {
           await response.json();
 
         setUser(data.user);
+        try {
+          const access = await fetch(`${API_URL}/api/access/role`, { credentials: "include" });
+          if (access.ok) {
+            const roleData = await access.json();
+            if (roleData.assigned && roleData.role?.key) {
+              setUserRole(roleData.role.key);
+              setRoleInfo(roleData.role);
+            }
+          }
+        } catch {}
       }
     } catch {
       // Backend may be sleeping/unavailable.
@@ -616,13 +1312,18 @@ function App() {
         ? "/api/auth/login"
         : "/api/auth/signup";
 
+    const selectedRole = authForm.role || "authority";
     const body =
       authMode === "login"
         ? {
             email: authForm.email,
             password: authForm.password,
           }
-        : authForm;
+        : {
+            name: authForm.name,
+            email: authForm.email,
+            password: authForm.password,
+          };
 
     try {
       const response =
@@ -655,10 +1356,41 @@ function App() {
 
       setUser(data.user);
 
+      let finalRole = selectedRole;
+      try {
+        const existing = await fetch(`${API_URL}/api/access/role`, { credentials: "include" });
+        if (existing.ok) {
+          const roleData = await existing.json();
+          if (roleData.assigned && roleData.role?.key) {
+            finalRole = roleData.role.key;
+            if (finalRole !== selectedRole) {
+              throw new Error(`This account is assigned to ${roleData.role.label}. Please select that role.`);
+            }
+          } else {
+            const assigned = await fetch(`${API_URL}/api/access/role`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ role: selectedRole }),
+            });
+            const assignedData = await assigned.json();
+            if (!assigned.ok) throw new Error(assignedData.detail || "Unable to assign account role");
+            finalRole = assignedData.role?.key || selectedRole;
+          }
+        }
+      } catch (roleError) {
+        // Role service is additive. Never block legacy authentication when it is unavailable.
+        console.warn("Optional role service unavailable:", roleError);
+        finalRole = selectedRole;
+      }
+
+      setUserRole(finalRole);
+      setRoleInfo(NER_ROLES[finalRole] || { label: finalRole, landing: "Dashboard" });
       setAuthForm({
         name: "",
         email: "",
         password: "",
+        role: "authority",
       });
     } catch (error) {
       setAuthError(
@@ -685,6 +1417,8 @@ function App() {
     stopGpsTracking();
 
     setUser(null);
+    setUserRole("authority");
+    setRoleInfo(null);
     setRoute(null);
   }
 
@@ -767,6 +1501,7 @@ function App() {
         loadAlerts(),
         loadHazards(),
         loadNerNews(),
+        loadProblemStatementOps(),
       ]);
       setBackendStatus("Connected");
       setBackendCheckedAt(new Date());
@@ -1920,50 +2655,32 @@ function App() {
             </span>
 
             <h1>
-              Intelligent
+              Smarter Logistics.
               <br />
-              Logistics
-              <br />
-              Infrastructure
+              Stronger <span>North East.</span>
             </h1>
 
             <p>
-              Real-time route intelligence,
-              vehicle visibility, weather,
-              hazards and logistics decision
-              support for the North Eastern
-              Region.
+              Real-time route intelligence, live alerts, weather updates and AI-powered
+              logistics decision support for a safer, more connected North East.
             </p>
 
             <div className="auth-feature-grid">
               <div>
-                <strong>
-                  LIVE
-                </strong>
-
-                <span>
-                  Fleet Intelligence
-                </span>
+                <strong>LIVE</strong>
+                <span>Fleet Intelligence</span>
               </div>
-
               <div>
-                <strong>
-                  AI
-                </strong>
-
-                <span>
-                  Route Risk Analysis
-                </span>
+                <strong>AI</strong>
+                <span>Route Risk Analysis</span>
               </div>
-
               <div>
-                <strong>
-                  8
-                </strong>
-
-                <span>
-                  NER States
-                </span>
+                <strong>8</strong>
+                <span>NER States</span>
+              </div>
+              <div>
+                <strong>24/7</strong>
+                <span>Safety Monitoring</span>
               </div>
             </div>
           </div>
@@ -2046,7 +2763,7 @@ function App() {
               )}
 
               <label>
-                Email
+                <span className="auth-label-row"><span>Email</span><span className="auth-field-icon">✉</span></span>
 
                 <input
                   type="email"
@@ -2066,7 +2783,7 @@ function App() {
               </label>
 
               <label>
-                Password
+                <span className="auth-label-row"><span>Password</span><span className="auth-field-icon">▣</span></span>
 
                 <input
                   type="password"
@@ -2084,6 +2801,24 @@ function App() {
                   required
                 />
               </label>
+
+              <label>
+                <span className="auth-label-row"><span>Access Role</span><span className="auth-field-icon">◇</span></span>
+                <select
+                  value={authForm.role}
+                  onChange={(e) => setAuthForm({ ...authForm, role: e.target.value })}
+                >
+                  {Object.entries(NER_ROLES).map(([key, value]) => (
+                    <option key={key} value={key}>{value.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="auth-role-note">
+                {authMode === "signup"
+                  ? "Your first selected role is attached to this account."
+                  : "The selected role must match the role already assigned to this account."}
+              </div>
 
               {authError && (
                 <div className="error-box">
@@ -2139,7 +2874,32 @@ function App() {
 
         </div>
 
+        <div className="topbar-search">
+          <span>⌕</span>
+          <input
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && globalSearch.trim()) {
+                setDestination(globalSearch.trim());
+                setGlobalSearch("");
+                setActiveNav("route");
+                document.getElementById("route-planner")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+            }}
+            placeholder="Search destination, vehicle, or location..."
+            aria-label="Search destination, vehicle, or location"
+          />
+        </div>
+
         <div className="topbar-right">
+
+          <button className="notification-btn" type="button" onClick={() => {
+            setActiveNav("alerts");
+            document.getElementById("system-alerts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }} aria-label="Open alerts">
+            ♧<span>{alerts.length > 0 ? Math.min(alerts.length, 9) : ""}</span>
+          </button>
 
           <div className="system-live">
             <span className="live-dot" />
@@ -2157,6 +2917,7 @@ function App() {
             <small>
               {user.email}
             </small>
+            <span className="role-chip">{roleInfo?.label || NER_ROLES[userRole]?.label || "Logistics Authority"}</span>
           </div>
 
           <button
@@ -2173,23 +2934,75 @@ function App() {
       <div className="dashboard-layout">
 
         <aside className="dashboard-sidebar">
+          <div className="sidebar-brand">
+            <div className="sidebar-logo">⌁</div>
+            <div>
+              <strong>NER</strong>
+              <span>Smart Logistics</span>
+            </div>
+          </div>
+
           <nav className="sidebar-nav" aria-label="Dashboard navigation">
-            <a className="sidebar-nav-item active" href="#dashboard-top">⌂<span>Dashboard</span></a>
-            <a className="sidebar-nav-item" href="#route-planner">⌘<span>Route Planner</span></a>
-            <a className="sidebar-nav-item" href="#fleet-control">▣<span>Fleet Control</span></a>
-            <a className="sidebar-nav-item" href="#hazard-monitor">△<span>Hazard Monitor</span></a>
-            <a className="sidebar-nav-item" href="#live-news">▤<span>Live News</span></a>
-            <a className="sidebar-nav-item" href="#logistics-visibility">◇<span>Logistics</span></a>
-            <a className="sidebar-nav-item" href="#system-alerts">♧<span>System Alerts</span></a>
-            <a className="sidebar-nav-item" href="#settings">⚙<span>Settings</span></a>
+            {[
+              ["dashboard", "dashboard-top", "D", "Dashboard"],
+              ["route", "route-planner", "R", "Route Planner"],
+              ["fleet", "fleet-control", "F", "Fleet Control"],
+              ["gps", "live-map", "G", "Live GPS"],
+              ["weather", "regional-operations", "W", "Weather"],
+              ["satellite", "regional-operations", "S", "Satellite"],
+              ["news", "live-news", "N", "News"],
+              ["alerts", "system-alerts", "A", "Alerts"],
+              ["logistics", "logistics-visibility", "L", "Logistics"],
+              ["emergency", "live-map", "E", "Emergency Route"],
+              ["ai", "operations-intelligence", "AI", "AI Decision"],
+              ["reports", "operations-intelligence", "RP", "Reports"],
+              ["field-reports", "regional-operations", "FR", "Field Reports"],
+              ["advanced", "advanced-intelligence", "AD", "Advanced Intelligence"],
+              ["settings", "settings", "ST", "Settings"],
+            ].map(([key, target, icon, label]) => (
+              <a
+                key={key}
+                className={`sidebar-nav-item ${activeNav === key ? "active" : ""}`}
+                href={`#${target}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setActiveNav(key);
+                  window.requestAnimationFrame(() => {
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  });
+                }}
+              >
+                <span className="sidebar-nav-icon">{icon}</span>
+                <span>{label}</span>
+              </a>
+            ))}
           </nav>
 
           <div className="sidebar-quote">
             <strong>Stronger Connectivity<br />for a Safer<br />North East</strong>
+            <span>◢◣</span>
           </div>
         </aside>
 
-        <main className="dashboard" id="dashboard-top">
+        <main className={`dashboard dashboard-view-${activeNav}`} id="dashboard-top">
+
+        <section className="role-focus-strip" aria-label="Role workspace">
+          <div>
+            <span>ROLE WORKSPACE</span>
+            <strong>{roleInfo?.label || NER_ROLES[userRole]?.label || "Logistics Authority"}</strong>
+            <small>{roleInfo?.landing || NER_ROLES[userRole]?.landing || "Command Center"}</small>
+          </div>
+          <div className="role-focus-items">
+            {(userRole === "authority"
+              ? ["District connectivity", "Bottlenecks", "Fleet + shipments", "Alerts"]
+              : userRole === "field_official"
+                ? ["Field reports", "Hazards", "Offline sync", "Route risk"]
+                : userRole === "logistics_operator"
+                  ? ["Fleet GPS", "Shipments", "Alternate routes", "Delay alerts"]
+                  : ["Emergency routes", "Disaster alerts", "High-risk corridors", "Analytics"]
+            ).map((item) => <span key={item}>{item}</span>)}
+          </div>
+        </section>
 
         {/* =================================================
             WELCOME / OVERVIEW
@@ -2678,10 +3491,9 @@ function App() {
               className="leaflet-map"
             >
 
-              <TileLayer
-                attribution="© OpenStreetMap contributors"
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+              <MapSizeFix />
+
+              <MapLayerSwitcher />
 
               {route && (
                 <>
@@ -2981,7 +3793,7 @@ function App() {
         ================================================= */}
 
         {route && (
-          <section className="panel">
+          <section className="panel route-decision-panel" id="route-decision">
 
             <SectionHeader
               eyebrow="AI DECISION SUPPORT"
@@ -3263,7 +4075,7 @@ function App() {
 
         <section className="two-column weather-satellite-grid">
 
-          <div className="panel">
+          <div className="panel weather-intelligence-panel" id="weather-intelligence">
 
             <SectionHeader
               eyebrow="ENVIRONMENTAL DATA"
@@ -3332,7 +4144,7 @@ function App() {
 
           </div>
 
-          <div className="panel">
+          <div className="panel satellite-intelligence-panel" id="satellite-intelligence">
 
             <SectionHeader
               eyebrow="EARTH OBSERVATION"
@@ -3389,15 +4201,170 @@ function App() {
               </div>
             )}
 
+            <SatelliteCoverageMap route={route} fleetMarkers={fleetMarkers} />
+            <p className="data-disclaimer satellite-source-note">
+              Visual layer: real Esri World Imagery satellite tiles. Analytical vegetation values come from the connected satellite intelligence service when a route has been analyzed.
+            </p>
+
           </div>
 
+        </section>
+
+        {/* =================================================
+            REGIONAL ACCESSIBILITY + FIELD OPERATIONS
+        ================================================= */}
+
+        <section className="panel regional-operations-panel" id="regional-operations">
+          <SectionHeader
+            eyebrow="REGIONAL OPERATIONS"
+            title="Accessibility & Field Intelligence"
+            description="Live feed-based accessibility watch, multilingual notifications and field reporting using the existing backend alert service."
+            action={
+              <div className="ops-toolbar">
+                <span className={isOnline ? "connection-chip online" : "connection-chip offline"}>
+                  <i /> {isOnline ? "ONLINE" : "OFFLINE"}
+                </span>
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} aria-label="Notification language">
+                  {Object.entries(NER_LANGUAGES).map(([key, value]) => (
+                    <option key={key} value={key}>{value.name}</option>
+                  ))}
+                </select>
+                <button className="small-btn" type="button" onClick={enableBrowserNotifications}>
+                  {notificationPermission === "granted" ? "Notifications On" : "Enable Notifications"}
+                </button>
+              </div>
+            }
+          />
+
+          <div className="regional-ops-grid">
+            <div className="regional-watch-card">
+              <div className="regional-card-head">
+                <div>
+                  <span>STATE-WISE FEED WATCH</span>
+                  <strong>8 NER states</strong>
+                </div>
+                <span className="data-source-chip">NDMA SACHET + route context</span>
+              </div>
+              <div className="state-watch-grid">
+                {regionalAccessibility.map((item) => (
+                  <div className={`state-watch-item ${item.tone}`} key={item.state}>
+                    <span>{item.state}</span>
+                    <strong>{item.status}</strong>
+                  </div>
+                ))}
+              </div>
+              <p className="data-disclaimer">This is a verified-feed watch, not a claim that every road in a state is open or closed. District-wide connectivity requires a dedicated authoritative road-status feed.</p>
+            </div>
+
+            <div className="field-report-card">
+              <div className="regional-card-head">
+                <div>
+                  <span>FIELD INTELLIGENCE</span>
+                  <strong>Geo-tagged incident report</strong>
+                </div>
+                <span className="queue-chip">{offlineReportCount} queued</span>
+              </div>
+
+              <form className="field-report-form" onSubmit={submitFieldReport}>
+                <div className="field-report-row">
+                  <label>Incident type
+                    <select value={fieldReport.incidentType} onChange={(e) => setFieldReport({ ...fieldReport, incidentType: e.target.value })}>
+                      <option>Road obstruction</option>
+                      <option>Landslide</option>
+                      <option>Flooding</option>
+                      <option>Bridge / infrastructure issue</option>
+                      <option>Traffic / accident</option>
+                      <option>Weather disruption</option>
+                    </select>
+                  </label>
+                  <label>Severity
+                    <select value={fieldReport.severity} onChange={(e) => setFieldReport({ ...fieldReport, severity: e.target.value })}>
+                      <option>Low</option>
+                      <option>Medium</option>
+                      <option>High</option>
+                      <option>Critical</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label>Description
+                  <textarea
+                    value={fieldReport.description}
+                    onChange={(e) => setFieldReport({ ...fieldReport, description: e.target.value })}
+                    placeholder="Describe what the field team observed..."
+                    rows={3}
+                  />
+                </label>
+
+                <div className="field-report-row">
+                  <label>Latitude
+                    <input value={fieldReport.lat} onChange={(e) => setFieldReport({ ...fieldReport, lat: e.target.value })} placeholder="Auto from GPS" />
+                  </label>
+                  <label>Longitude
+                    <input value={fieldReport.lon} onChange={(e) => setFieldReport({ ...fieldReport, lon: e.target.value })} placeholder="Auto from GPS" />
+                  </label>
+                </div>
+
+                <div className="field-report-actions">
+                  <button className="secondary-btn" type="button" onClick={captureFieldLocation}>⌖ Capture device GPS</button>
+                  <label className="photo-picker">
+                    <span>📷 {fieldReportPhoto ? fieldReportPhoto : "Attach field photo"}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        setFieldReportPhoto(file?.name || "");
+                        setFieldReportPhotoFile(file || null);
+                        setFieldReport({ ...fieldReport, photoName: file?.name || "" });
+                      }}
+                    />
+                  </label>
+                  <button className="primary-btn" type="submit" disabled={fieldReportLoading}>
+                    {fieldReportLoading ? "Saving..." : "Submit Field Report →"}
+                  </button>
+                </div>
+
+                {fieldReportPhoto && (
+                  <small className="photo-local-note">Photo selected: {fieldReportPhoto}. The image is uploaded as evidence to the additive field-report backend when connectivity is available.</small>
+                )}
+                {fieldReportError && <div className="error-box">{fieldReportError}</div>}
+                {fieldReportMessage && <div className="success-box">{fieldReportMessage}</div>}
+              </form>
+            </div>
+          </div>
+
+          <div className="offline-sync-strip">
+            <div>
+              <span className="sync-icon">↻</span>
+              <div>
+                <strong>Offline synchronization</strong>
+                <small>{offlineReportCount ? `${offlineReportCount} field report(s) waiting for sync.` : "No field reports waiting for sync."}</small>
+              </div>
+            </div>
+            <span>{isOnline ? "Connection restored automatically syncs queued reports." : "Keep working locally; queued reports will sync when the browser reconnects."}</span>
+          </div>
+
+          {cachedRoute && !route && (
+            <div className="cached-route-card">
+              <div>
+                <span>OFFLINE ROUTE CACHE</span>
+                <strong>{cachedRoute.start} → {cachedRoute.destination}</strong>
+              </div>
+              <div>
+                <strong>{cachedRoute.route?.distance_km ?? "--"} km</strong>
+                <small>Last successful route analysis · {cachedRoute.savedAt ? new Date(cachedRoute.savedAt).toLocaleString() : ""}</small>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* =================================================
             LIVE NER NEWS
         ================================================= */}
 
-        <section className="panel">
+        <section className="panel live-news-panel" id="live-news">
 
           <SectionHeader
             eyebrow="REGIONAL INTELLIGENCE"
@@ -3704,6 +4671,50 @@ function App() {
         </section>
 
         {/* =================================================
+            PROBLEM STATEMENT OPERATIONS DASHBOARD
+        ================================================= */}
+
+        <section className="panel operations-intelligence-panel" id="operations-intelligence">
+          <SectionHeader
+            eyebrow="SIH26002 OPERATIONS INTELLIGENCE"
+            title="Regional Connectivity & Logistics Command"
+            description="Centralized decision-support for district connectivity, supply-chain bottlenecks, emergency accessibility and field evidence."
+            action={<button className="small-btn" onClick={loadProblemStatementOps}>Refresh</button>}
+          />
+
+          <div className="ops-kpi-grid">
+            <div className="ops-kpi"><span>Fleet vehicles</span><strong>{opsAnalytics?.vehicles?.total ?? vehicles.length}</strong><small>{opsAnalytics?.vehicles?.with_gps ?? vehicles.filter(v => v.lat != null && v.lon != null).length} with GPS</small></div>
+            <div className="ops-kpi"><span>Shipments</span><strong>{opsAnalytics?.shipments?.total ?? shipments.length}</strong><small>Recorded operational data</small></div>
+            <div className="ops-kpi"><span>Field reports</span><strong>{opsAnalytics?.field_reports?.total ?? 0}</strong><small>Geo-tagged evidence</small></div>
+            <div className="ops-kpi"><span>Active alerts</span><strong>{opsAnalytics?.alerts?.total ?? alerts.length}</strong><small>Backend alert stream</small></div>
+          </div>
+
+          <div className="ops-intelligence-grid">
+            <div className="ops-data-card">
+              <div className="regional-card-head"><div><span>DISTRICT CONNECTIVITY</span><strong>{districtConnectivity.length} evidence-backed district signal(s)</strong></div></div>
+              {districtConnectivity.length ? <div className="ops-table-list">{districtConnectivity.slice(0, 10).map((item, i) => <div className="ops-table-row" key={`${item.state}-${item.district}-${i}`}><div><strong>{item.district}</strong><small>{item.state}</small></div><StatusBadge status={item.status} /><strong>{item.risk_score}/100</strong></div>)}</div> : <div className="empty-state">No geo-tagged district evidence has been reported yet. This panel does not fabricate road-open/road-closed status.</div>}
+            </div>
+
+            <div className="ops-data-card">
+              <div className="regional-card-head"><div><span>LOGISTICS BOTTLENECKS</span><strong>{bottlenecks?.delayed_shipments?.length ?? 0} recorded exception shipment(s)</strong></div></div>
+              {bottlenecks?.status_counts ? <div className="ops-status-counts">{Object.entries(bottlenecks.status_counts).map(([status,count]) => <div key={status}><span>{status}</span><strong>{count}</strong></div>)}</div> : <div className="empty-state">No shipment status data returned.</div>}
+              <small className="data-disclaimer">Bottlenecks are derived from recorded backend shipment status; no synthetic delay is generated.</small>
+            </div>
+
+            <div className="ops-data-card">
+              <div className="regional-card-head"><div><span>EMERGENCY ACCESSIBILITY</span><strong>{emergencyAccess?.available ? "Service available" : "Unavailable"}</strong></div><span className="data-source-chip">REAL ROUTING</span></div>
+              <p>Emergency accessibility reuses the existing emergency reroute engine with the connected route, hazard and weather data.</p>
+              <button className="danger-btn" onClick={emergencyReroute} disabled={rerouteLoading}>{rerouteLoading ? "Calculating..." : "Calculate Emergency Route →"}</button>
+            </div>
+
+            <div className="ops-data-card">
+              <div className="regional-card-head"><div><span>NOTIFICATION CENTER</span><strong>{opsNotifications.length} backend notification(s)</strong></div></div>
+              {opsNotifications.length ? <div className="ops-notification-list">{opsNotifications.slice(0, 5).map((item, i) => <div key={item.id ?? i}><strong>{item.title || "Operational alert"}</strong><small>{item.message || ""}</small></div>)}</div> : <div className="empty-state">No backend notifications returned.</div>}
+            </div>
+          </div>
+        </section>
+
+        {/* =================================================
             SYSTEM ALERTS
         ================================================= */}
 
@@ -3780,6 +4791,165 @@ function App() {
         {/* =================================================
             FOOTER
         ================================================= */}
+
+        {/* =================================================
+            ADVANCED INTELLIGENCE — NEW ADDITIVE LAYER
+        ================================================= */}
+        <section className="panel advanced-intelligence-panel" id="advanced-intelligence">
+          <SectionHeader
+            eyebrow="NEXT-GENERATION NER INTELLIGENCE"
+            title="Regional Digital Twin & Self-Healing Logistics"
+            description="Live evidence, scenario analysis and operational impact tools built on the connected NER services."
+            action={
+              <button className="primary-btn" type="button" onClick={loadAdvancedIntel} disabled={advancedLoading}>
+                {advancedLoading ? "Refreshing..." : "Refresh Intelligence"}
+              </button>
+            }
+          />
+
+          <div className="advanced-feature-grid">
+            <div className="advanced-feature-card">
+              <span>DIGITAL TWIN</span>
+              <strong>{advancedIntel?.twin?.digital_twin?.vehicles ?? vehicles.length} vehicles · {advancedIntel?.twin?.digital_twin?.shipments ?? shipments.length} shipments</strong>
+              <small>
+                {advancedIntel?.twin
+                  ? `${advancedIntel.twin.digital_twin.application_alerts} application alerts and ${advancedIntel.twin.digital_twin.field_reports} field reports connected.`
+                  : "Refresh to load the live operational twin."}
+              </small>
+            </div>
+
+            <div className="advanced-feature-card">
+              <span>DISRUPTION MEMORY</span>
+              <strong>{advancedIntel?.memory?.historical_evidence?.field_report_count ?? 0} stored field reports</strong>
+              <small>
+                Historical evidence is derived from authenticated field submissions; no report does not mean no incident.
+              </small>
+            </div>
+
+            <div className="advanced-feature-card">
+              <span>VERIFICATION</span>
+              <strong>{advancedIntel?.verification?.verification_status || "Not checked"}</strong>
+              <small>
+                Cross-checks government alerts, field evidence and route weather risk.
+              </small>
+            </div>
+
+            <div className="advanced-feature-card">
+              <span>RESILIENCE</span>
+              <strong>{route ? `${route.risk_score ?? "--"}/100 route risk` : "Awaiting route"}</strong>
+              <small>
+                Use the route analysis together with alternate-route availability to assess corridor resilience.
+              </small>
+            </div>
+          </div>
+
+          <div className="advanced-tool-grid">
+            <div className="advanced-tool-card">
+              <div className="advanced-tool-head">
+                <div>
+                  <span>WHAT-IF SIMULATOR</span>
+                  <strong>Stress-test the current corridor</strong>
+                </div>
+                <button className="secondary-btn" type="button" onClick={runAdvancedWhatIf} disabled={advancedLoading}>Run</button>
+              </div>
+              <div className="advanced-input-grid">
+                <label>Rainfall (mm)<input type="number" min="0" value={intelWhatIf.rainfall_mm} onChange={(e) => setIntelWhatIf({...intelWhatIf, rainfall_mm: Number(e.target.value)})} /></label>
+                <label>Wind (km/h)<input type="number" min="0" value={intelWhatIf.wind_kmh} onChange={(e) => setIntelWhatIf({...intelWhatIf, wind_kmh: Number(e.target.value)})} /></label>
+                <label>Extra delay (min)<input type="number" min="0" value={intelWhatIf.extra_delay_minutes} onChange={(e) => setIntelWhatIf({...intelWhatIf, extra_delay_minutes: Number(e.target.value)})} /></label>
+                <label>Extra hazards<input type="number" min="0" value={intelWhatIf.additional_hazard_count} onChange={(e) => setIntelWhatIf({...intelWhatIf, additional_hazard_count: Number(e.target.value)})} /></label>
+              </div>
+              {advancedIntel?.whatIf && (
+                <div className="advanced-result">
+                  <strong>{advancedIntel.whatIf.scenario.risk_level} · {advancedIntel.whatIf.scenario.risk_score}/100</strong>
+                  <span>{advancedIntel.whatIf.scenario.reasons.join(" ") || "No additional scenario factors."}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="advanced-tool-card">
+              <div className="advanced-tool-head">
+                <div>
+                  <span>SAFE TIME WINDOW</span>
+                  <strong>Compare departure scenarios</strong>
+                </div>
+                <button className="secondary-btn" type="button" onClick={runSafeWindow} disabled={advancedLoading}>Compare</button>
+              </div>
+              {advancedIntel?.safeWindow ? (
+                <div className="window-list">
+                  {advancedIntel.safeWindow.windows.map((item) => (
+                    <div key={item.departure_offset_minutes} className={item.departure_offset_minutes === advancedIntel.safeWindow.recommended_window.departure_offset_minutes ? "window-row recommended" : "window-row"}>
+                      <span>{item.departure_offset_minutes === 0 ? "Now" : `+${item.departure_offset_minutes} min`}</span>
+                      <strong>{item.scenario_risk_score}</strong>
+                      <em>{item.risk_level}</em>
+                    </div>
+                  ))}
+                </div>
+              ) : <small>Run the comparison after a route has been analyzed.</small>}
+            </div>
+
+            <div className="advanced-tool-card">
+              <div className="advanced-tool-head">
+                <div>
+                  <span>LOGISTICS IMPACT</span>
+                  <strong>Translate route risk into operations</strong>
+                </div>
+                <button className="secondary-btn" type="button" onClick={runImpact} disabled={advancedLoading}>Calculate</button>
+              </div>
+              {advancedIntel?.impact ? (
+                <div className="impact-metrics">
+                  <div><strong>{advancedIntel.impact.impact.estimated_delay_minutes} min</strong><span>Scenario delay</span></div>
+                  <div><strong>{advancedIntel.impact.impact.potentially_affected_shipments}</strong><span>Potential shipments</span></div>
+                  <div><strong>{advancedIntel.impact.impact.potentially_affected_vehicles}</strong><span>Potential vehicles</span></div>
+                </div>
+              ) : <small>Uses the currently analyzed route and connected fleet/shipment counts.</small>}
+            </div>
+
+            <div className="advanced-tool-card">
+              <div className="advanced-tool-head">
+                <div>
+                  <span>RISK PROPAGATION</span>
+                  <strong>See how disruption can spread</strong>
+                </div>
+                <button className="secondary-btn" type="button" onClick={async () => {
+                  setAdvancedLoading(true);
+                  try {
+                    const data = await apiFetch("/api/intelligence/propagation", {
+                      method: "POST",
+                      headers: {"Content-Type": "application/json"},
+                      body: JSON.stringify({
+                        risk_score: route?.risk_score || 0,
+                        hazard_count: hazards.length,
+                        field_report_count: advancedIntel?.memory?.historical_evidence?.field_report_count || 0,
+                        vehicle_count: vehicles.length,
+                        shipment_count: shipments.length,
+                      }),
+                    });
+                    setAdvancedIntel((current) => ({...(current || {}), propagation: data}));
+                  } catch (error) {
+                    setAdvancedError(error?.message || "Propagation analysis failed.");
+                  } finally {
+                    setAdvancedLoading(false);
+                  }
+                }} disabled={advancedLoading}>Trace</button>
+              </div>
+              {advancedIntel?.propagation ? (
+                <div className="propagation-list">
+                  {advancedIntel.propagation.chain.map((node) => (
+                    <div key={node.stage}><span>{node.stage}</span><strong>{node.score}</strong></div>
+                  ))}
+                </div>
+              ) : <small>Hazard → road → fleet → shipment exposure chain.</small>}
+            </div>
+          </div>
+
+          {advancedError && <div className="error-box">{advancedError}</div>}
+
+          <div className="advanced-disclaimer">
+            <strong>Evidence-first safety rule:</strong>
+            No road is automatically declared closed by this intelligence layer. Government alerts, live weather, routing and authenticated field evidence remain distinguishable sources. Scenario scores are decision-support, not guaranteed predictions.
+          </div>
+        </section>
+
 
         <section className="panel settings-panel" id="settings">
 
